@@ -35,7 +35,34 @@ Value createString(const char *value)
 {
     Value val;
     val.type = VAL_STRING;
-    val.as.string = strdup(value);
+    
+    // 处理NULL输入
+    if (value == NULL) {
+        printf("WARNING: NULL string passed to createString\n");
+        val.as.string = malloc(1);  // 手动分配内存而不是用strdup
+        if (val.as.string == NULL) {
+            printf("ERROR: Failed to allocate memory for empty string\n");
+            val.type = VAL_NULL;
+            return val;
+        }
+        val.as.string[0] = '\0';  // 设置为空字符串
+        return val;
+    }
+    
+    // 计算字符串长度并检查有效性
+    size_t len = strlen(value);
+    
+    // 手动分配内存并复制，而不是使用strdup
+    val.as.string = (char*)malloc(len + 1);  // +1 用于 null 终止符
+    if (val.as.string == NULL) {
+        val.type = VAL_NULL;
+        return val;
+    }
+    
+    // 手动复制字符串
+    memcpy(val.as.string, value, len);
+    val.as.string[len] = '\0';  // 确保正确终止字符串
+    
     return val;
 }
 
@@ -97,7 +124,14 @@ void printValue(Value value)
         printf("%g", value.as.number);
         break;
     case VAL_STRING:
-        printf("\"%s\"", value.as.string);
+        if (value.as.string != NULL)
+        {
+            printf("\"%s\"", value.as.string);
+        }
+        else
+        {
+            printf("\"<null>\"");
+        }
         break;
     case VAL_FUNCTION:
         printf("<function %s>", value.as.function->name);
