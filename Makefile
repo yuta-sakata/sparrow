@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c99
+CFLAGS = -Wall -Wextra -std=c99 -g3 -gdwarf-4 -fno-omit-frame-pointer
 INCLUDE_DIR = include
 SRC_DIR = src
 BUILD_DIR = build
