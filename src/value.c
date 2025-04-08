@@ -35,34 +35,36 @@ Value createString(const char *value)
 {
     Value val;
     val.type = VAL_STRING;
-    
+
     // 处理NULL输入
-    if (value == NULL) {
+    if (value == NULL)
+    {
         printf("WARNING: NULL string passed to createString\n");
-        val.as.string = malloc(1);  // 手动分配内存而不是用strdup
-        if (val.as.string == NULL) {
+        val.as.string = malloc(1);
+        if (val.as.string == NULL)
+        {
             printf("ERROR: Failed to allocate memory for empty string\n");
             val.type = VAL_NULL;
             return val;
         }
-        val.as.string[0] = '\0';  // 设置为空字符串
+        val.as.string[0] = '\0'; // 设置为空字符串
         return val;
     }
-    
+
     // 计算字符串长度并检查有效性
     size_t len = strlen(value);
-    
-    // 手动分配内存并复制，而不是使用strdup
-    val.as.string = (char*)malloc(len + 1);  // +1 用于 null 终止符
-    if (val.as.string == NULL) {
+
+    val.as.string = (char *)malloc(len + 1); // +1 用于 null 终止符
+    if (val.as.string == NULL)
+    {
         val.type = VAL_NULL;
         return val;
     }
-    
+
     // 手动复制字符串
     memcpy(val.as.string, value, len);
-    val.as.string[len] = '\0';  // 确保正确终止字符串
-    
+    val.as.string[len] = '\0'; // 确保正确终止字符串
+
     return val;
 }
 
@@ -148,7 +150,14 @@ Value copyValue(Value value)
     switch (value.type)
     {
     case VAL_STRING:
-        return createString(value.as.string);
+        if (value.as.string != NULL)
+        {
+            return createString(value.as.string); // 创建新的字符串副本
+        }
+        else
+        {
+            return createString(""); // 防止NULL指针
+        }
     case VAL_FUNCTION:
     {
         // 复制函数需要更复杂的处理，这里只是简单引用

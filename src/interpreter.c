@@ -693,74 +693,86 @@ static Value evaluateCall(Interpreter *interpreter, Expr *expr)
 // 执行函数声明
 static void executeFunction(Interpreter *interpreter, Stmt *stmt)
 {
-	// 创建函数对象
-	Function *function = (Function *)malloc(sizeof(Function));
-	if (function == NULL)
-	{
-		runtimeError(interpreter, "内存分配失败");
-		return;
-	}
+    // 创建函数对象
+    Function *function = (Function *)malloc(sizeof(Function));
+    if (function == NULL)
+    {
+        runtimeError(interpreter, "内存分配失败");
+        return;
+    }
 
-	function->name = strdup(stmt->as.function.name.lexeme);
-	function->arity = stmt->as.function.paramCount;
-	function->paramTypes = NULL; // 初始化为NULL
-	function->returnType = stmt->as.function.returnType;
 
-	// 分配并存储参数名
-	function->paramNames = NULL;
-	if (function->arity > 0)
-	{
-		function->paramNames = (char **)malloc(sizeof(char *) * function->arity);
-		if (function->paramNames == NULL)
-		{
-			free(function->name);
-			free(function);
-			runtimeError(interpreter, "内存分配失败");
-			return;
-		}
+    size_t nameLen = strlen(stmt->as.function.name.lexeme);
+    function->name = (char *)malloc(nameLen + 1); // +1 为了空字符
+    if (function->name == NULL)
+    {
+        free(function);
+        runtimeError(interpreter, "内存分配失败");
+        return;
+    }
+    strcpy(function->name, stmt->as.function.name.lexeme);
 
-		// 从 params Token 数组中复制参数名
-		for (int i = 0; i < function->arity; i++)
-		{
-			function->paramNames[i] = strdup(stmt->as.function.params[i].lexeme);
-			if (function->paramNames[i] == NULL)
-			{
-				// 清理已分配的内存
-				for (int j = 0; j < i; j++)
-				{
-					free(function->paramNames[j]);
-				}
-				free(function->paramNames);
-				free(function->name);
-				free(function);
-				runtimeError(interpreter, "内存分配失败");
-				return;
-			}
-		}
-	}
+    function->arity = stmt->as.function.paramCount;
+    function->paramTypes = NULL; // 初始化为NULL
+    function->returnType = stmt->as.function.returnType;
 
-	function->body = stmt->as.function.body;
-	function->closure = interpreter->environment;
+    // 分配并存储参数名
+    function->paramNames = NULL;
+    if (function->arity > 0)
+    {
+        function->paramNames = (char **)malloc(sizeof(char *) * function->arity);
+        if (function->paramNames == NULL)
+        {
+            free(function->name);
+            free(function);
+            runtimeError(interpreter, "内存分配失败");
+            return;
+        }
 
-	// 检查是否为 main 函数
-	if (strcmp(function->name, "main") == 0)
-	{
-		// 检查参数数量（main 函数应该没有参数或有特定参数）
-		if (function->arity == 0)
-		{
-			// 记录找到了 main 函数
-			interpreter->hasMainFunction = true;
-			interpreter->mainFunction = function;
-		}
-		else
-		{
-			// 警告但不阻止，仍然允许定义带参数的 main 函数
-			printf("警告：main 函数应该没有参数\n");
-		}
-	}
+        // 从 params Token 数组中复制参数名
+        for (int i = 0; i < function->arity; i++)
+        {
+            size_t paramLen = strlen(stmt->as.function.params[i].lexeme);
+            function->paramNames[i] = (char *)malloc(paramLen + 1); // +1 为了空字符
+            if (function->paramNames[i] == NULL)
+            {
+                // 清理已分配的内存
+                for (int j = 0; j < i; j++)
+                {
+                    free(function->paramNames[j]);
+                }
+                free(function->paramNames);
+                free(function->name);
+                free(function);
+                runtimeError(interpreter, "内存分配失败");
+                return;
+            }
+            strcpy(function->paramNames[i], stmt->as.function.params[i].lexeme);
+        }
+    }
 
-	Value functionValue = createFunction(function);
-	defineVariable(interpreter->environment, function->name, functionValue);
+    function->body = stmt->as.function.body;
+    function->closure = interpreter->environment;
+
+    // 检查是否为 main 函数
+    if (strcmp(function->name, "main") == 0)
+    {
+        // 检查参数数量（main 函数应该没有参数或有特定参数）
+        if (function->arity == 0)
+        {
+            // 记录找到了 main 函数
+            interpreter->hasMainFunction = true;
+            interpreter->mainFunction = function;
+        }
+        else
+        {
+            // 警告但不阻止，仍然允许定义带参数的 main 函数
+            printf("警告：main 函数应该没有参数\n");
+        }
+    }
+
+    Value functionValue = createFunction(function);
+    defineVariable(interpreter->environment, function->name, functionValue);
 }
 
 // 执行返回语句

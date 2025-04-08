@@ -97,14 +97,29 @@ void defineVariable(Environment *env, const char *name, Value value)
         }
     }
 
-    // 深度拷贝变量名
-    env->names[env->count] = strdup(name);
-    if (env->names[env->count] == NULL)
+    // 先进行深度拷贝，然后检查结果
+    size_t name_len = strlen(name);
+    char *nameCopy = (char *)malloc(name_len + 1);
+    if (nameCopy == NULL)
     {
-        fprintf(stderr, "ERROR: Failed to allocate memory for variable name\n");
+        fprintf(stderr, "ERROR: Failed to allocate memory for variable name '%s'\n", name);
         return;
     }
 
+    // 手动复制字符串
+    memcpy(nameCopy, name, name_len);
+    nameCopy[name_len] = '\0';
+
+    // 验证复制是否成功
+    if (strlen(nameCopy) != name_len)
+    {
+        fprintf(stderr, "ERROR: Corrupted name copy\n");
+        free(nameCopy);
+        return;
+    }
+
+    // 分配成功后再赋值
+    env->names[env->count] = nameCopy;
     env->values[env->count] = value;
     env->count++;
 }
@@ -192,9 +207,8 @@ Value getVariable(Environment *env, Token name)
                 }
             }
         }
-
-        // 使用我们的安全比较函数
-        if (safeStringCompare(env->names[i], name.lexeme))
+        if (env->names[i] != NULL && (uintptr_t)env->names[i] >= 0x1000 &&
+            name.lexeme != NULL && strcmp(env->names[i], name.lexeme) == 0)
         {
             return copyValue(env->values[i]);
         }
@@ -300,52 +314,4 @@ void freeEnvironment(Environment *env)
     env->count = 0;
     env->capacity = 0;
     env->enclosing = NULL;
-}
-
-// 安全的字符串比较函数
-int safeStringCompare(const char *s1, const char *s2)
-{
-    // 检查指针是否有效
-    if (s1 == NULL || s2 == NULL)
-    {
-        return 0;
-    }
-
-    // 尝试从地址验证字符串的有效性
-    if ((uintptr_t)s1 < 0x1000 || (uintptr_t)s2 < 0x1000)
-    {
-        return 0;
-    }
-
-    // 安全地逐字节比较两个字符串
-    size_t i = 0;
-    while (1)
-    {
-        // 防止无限循环和缓冲区溢出
-        if (i > 1000)
-        { // 假设合法字符串不超过1000个字符
-            return 0;
-        }
-
-        // 安全读取字符
-        char c1 = s1[i];
-        char c2 = s2[i];
-
-        // 如果两个字符都是'\0'，字符串相等
-        if (c1 == '\0' && c2 == '\0')
-        {
-            return 1;
-        }
-
-        // 如果其中一个是'\0'或字符不同，字符串不相等
-        if (c1 != c2)
-        {
-            return 0;
-        }
-
-        i++;
-    }
-
-    // 不应该到达这里
-    return 0;
 }

@@ -239,7 +239,12 @@ static Token errorToken(Lexer *lexer, const char *message)
     Token token;
     token.type = TOKEN_ERROR;
 
-    token.lexeme = strdup(message);
+    size_t messageLen = strlen(message);
+    token.lexeme = (char *)malloc(messageLen + 1); 
+    if (token.lexeme != NULL) {
+        strcpy(token.lexeme, message);
+    }
+    
     token.line = lexer->line;
 
     return token;
