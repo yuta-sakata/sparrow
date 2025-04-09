@@ -278,8 +278,47 @@ Value copyValue(Value value)
         return newValue;
     }
     case VAL_NATIVE_FUNCTION:
-        // 原生函数通常不需要复制
-        return value;
+    {
+        // 深度复制原生函数对象
+        NativeFunction *original = value.as.nativeFunction;
+        if (original == NULL)
+        {
+            return createNull();
+        }
+
+        // 分配新的原生函数结构
+        NativeFunction *newNativeFunction = (NativeFunction *)malloc(sizeof(NativeFunction));
+        if (newNativeFunction == NULL)
+        {
+            printf("ERROR: Failed to allocate memory for native function copy\n");
+            return createNull();
+        }
+
+        // 复制函数指针和参数数量
+        newNativeFunction->function = original->function;
+        newNativeFunction->arity = original->arity;
+        newNativeFunction->name = NULL;
+
+        // 复制函数名
+        if (original->name != NULL)
+        {
+            size_t nameLen = strlen(original->name);
+            newNativeFunction->name = (char *)malloc(nameLen + 1);
+            if (newNativeFunction->name == NULL)
+            {
+                free(newNativeFunction);
+                printf("ERROR: Failed to allocate memory for native function name\n");
+                return createNull();
+            }
+            strcpy(newNativeFunction->name, original->name);
+        }
+
+        // 创建新的原生函数值并返回
+        Value newValue;
+        newValue.type = VAL_NATIVE_FUNCTION;
+        newValue.as.nativeFunction = newNativeFunction;
+        return newValue;
+    }
     default:
         // 对于简单值类型，直接复制
         return value;
