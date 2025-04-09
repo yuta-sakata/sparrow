@@ -160,8 +160,122 @@ Value copyValue(Value value)
         }
     case VAL_FUNCTION:
     {
-        // 复制函数需要更复杂的处理，这里只是简单引用
-        return value;
+        // 深度复制函数对象
+        Function *original = value.as.function;
+        if (original == NULL)
+        {
+            return createNull();
+        }
+
+        // 分配新的函数结构
+        Function *newFunction = (Function *)malloc(sizeof(Function));
+        if (newFunction == NULL)
+        {
+            printf("ERROR: Failed to allocate memory for function copy\n");
+            return createNull();
+        }
+
+        // 复制基本类型字段
+        newFunction->arity = original->arity;
+        newFunction->returnType = original->returnType;
+
+        // 复制函数名
+        if (original->name != NULL)
+        {
+            size_t nameLen = strlen(original->name);
+            newFunction->name = (char *)malloc(nameLen + 1);
+            if (newFunction->name == NULL)
+            {
+                free(newFunction);
+                printf("ERROR: Failed to allocate memory for function name\n");
+                return createNull();
+            }
+            strcpy(newFunction->name, original->name);
+        }
+        else
+        {
+            newFunction->name = NULL;
+        }
+
+        // 复制参数名
+        newFunction->paramNames = NULL;
+        if (original->arity > 0 && original->paramNames != NULL)
+        {
+            newFunction->paramNames = (char **)malloc(sizeof(char *) * original->arity);
+            if (newFunction->paramNames == NULL)
+            {
+                free(newFunction->name);
+                free(newFunction);
+                printf("ERROR: Failed to allocate memory for param names\n");
+                return createNull();
+            }
+
+            // 初始化为NULL，避免释放未分配内存的错误
+            for (int i = 0; i < original->arity; i++)
+            {
+                newFunction->paramNames[i] = NULL;
+            }
+
+            // 复制每个参数名
+            for (int i = 0; i < original->arity; i++)
+            {
+                if (original->paramNames[i] != NULL)
+                {
+                    size_t paramLen = strlen(original->paramNames[i]);
+                    newFunction->paramNames[i] = (char *)malloc(paramLen + 1);
+                    if (newFunction->paramNames[i] == NULL)
+                    {
+                        // 清理已分配资源
+                        for (int j = 0; j < i; j++)
+                        {
+                            free(newFunction->paramNames[j]);
+                        }
+                        free(newFunction->paramNames);
+                        free(newFunction->name);
+                        free(newFunction);
+                        printf("ERROR: Failed to allocate memory for param name\n");
+                        return createNull();
+                    }
+                    strcpy(newFunction->paramNames[i], original->paramNames[i]);
+                }
+            }
+        }
+
+        // 复制参数类型（如果存在）
+        newFunction->paramTypes = NULL;
+        if (original->arity > 0 && original->paramTypes != NULL)
+        {
+            newFunction->paramTypes = (TypeAnnotation *)malloc(sizeof(TypeAnnotation) * original->arity);
+            if (newFunction->paramTypes == NULL)
+            {
+                // 清理已分配资源
+                for (int i = 0; i < original->arity; i++)
+                {
+                    if (newFunction->paramNames[i] != NULL)
+                    {
+                        free(newFunction->paramNames[i]);
+                    }
+                }
+                free(newFunction->paramNames);
+                free(newFunction->name);
+                free(newFunction);
+                printf("ERROR: Failed to allocate memory for param types\n");
+                return createNull();
+            }
+
+            // 复制参数类型
+            memcpy(newFunction->paramTypes, original->paramTypes, sizeof(TypeAnnotation) * original->arity);
+        }
+
+        // 对于body和closure保持引用，不进行深度复制
+        newFunction->body = original->body;
+        newFunction->closure = original->closure;
+
+        // 创建新的函数值并返回
+        Value newValue;
+        newValue.type = VAL_FUNCTION;
+        newValue.as.function = newFunction;
+        return newValue;
     }
     case VAL_NATIVE_FUNCTION:
         // 原生函数通常不需要复制
