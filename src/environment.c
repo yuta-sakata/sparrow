@@ -120,7 +120,7 @@ void defineVariable(Environment *env, const char *name, Value value)
 
     // 分配成功后再赋值
     env->names[env->count] = nameCopy;
-    env->values[env->count] = value;
+    env->values[env->count] = copyValue(value);
     env->count++;
 }
 // 在环境中查找变量名
