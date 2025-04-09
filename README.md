@@ -43,7 +43,7 @@ sparrow/
 
 ```bash
 # 克隆仓库
-git clone https://github.com/yourusername/sparrow.git
+git clone https://github.com/yuta-sakata/sparrow.git
 cd sparrow
 
 # 编译项目
