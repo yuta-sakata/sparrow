@@ -128,7 +128,7 @@ void printValue(Value value)
     case VAL_STRING:
         if (value.as.string != NULL)
         {
-            printf("\"%s\"", value.as.string);
+            printf("%s", value.as.string);
         }
         else
         {

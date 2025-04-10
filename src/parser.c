@@ -103,11 +103,12 @@ const char *getParseErrorMsg(Parser *parser)
 /**
  * @brief 解析声明语句
  *
- * 处理函数声明和变量声明。如果当前标记是函数标记，则解析函数声明；
- * 如果当前标记是类型标记（如int、float、string、bool、void），则解析变量声明；
+ * 处理函数声明和变量声明。如果当前标记是函数关键字，则解析函数声明；
+ * 如果当前标记是变量声明关键字(var)，则解析变量声明；
  * 否则将解析为普通语句。
  *
- * 对于变量声明，支持带有初始化器的变量定义。
+ * 对于变量声明，支持可选的类型注解（使用冒号后跟类型名），以及可选的初始化表达式。
+ * 类型可以是int、float、string或bool。
  *
  * @param parser 解析器指针
  * @return Stmt* 返回解析后的声明语句，若解析出错则返回NULL
@@ -167,36 +168,8 @@ static Stmt *declaration(Parser *parser)
 
         return createVarStmt(name, type, initializer);
     }
-
-    if (check(parser, TOKEN_INT) || check(parser, TOKEN_FLOAT_TYPE) ||
-        check(parser, TOKEN_STRING_TYPE) || check(parser, TOKEN_BOOL) ||
-        check(parser, TOKEN_VOID))
-    {
-        // 类型声明的变量定义
-        TokenType typeToken = peek(parser).type;
-        advance(parser); // 消费类型标记
-
-        Token name = consume(parser, TOKEN_IDENTIFIER, "Expect variable name.");
-        if (parser->hadError)
-            return NULL;
-
-        Token type;
-        type.type = typeToken;
-
-        Expr *initializer = NULL;
-        if (match(parser, TOKEN_ASSIGN))
-        {
-            initializer = expression(parser);
-        }
-
-        consume(parser, TOKEN_SEMICOLON, "Expect ';' after variable declaration.");
-        if (parser->hadError)
-            return NULL;
-
-        return createVarStmt(name, type, initializer);
-    }
-
-    return statement(parser);
+    
+     return statement(parser);
 }
 
 // 解析函数声明
