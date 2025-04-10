@@ -18,6 +18,7 @@ static Value evaluateAssign(Interpreter *interpreter, Expr *expr);
 
 static void executeExpression(Interpreter *interpreter, Stmt *stmt);
 static void executeVar(Interpreter *interpreter, Stmt *stmt);
+static void executeMultiVar(Interpreter *interpreter, Stmt *stmt);
 static void executeBlock(Interpreter *interpreter, Stmt **statements, int count, Environment *environment);
 static void executeIf(Interpreter *interpreter, Stmt *stmt);
 static void executeWhile(Interpreter *interpreter, Stmt *stmt);
@@ -90,6 +91,9 @@ void execute(Interpreter *interpreter, Stmt *stmt)
 		break;
 	case STMT_VAR:
 		executeVar(interpreter, stmt);
+		break;
+	case STMT_MULTI_VAR:
+		executeMultiVar(interpreter, stmt);
 		break;
 	case STMT_BLOCK:
 		executeBlock(interpreter, stmt->as.block.statements,
@@ -175,6 +179,27 @@ static void executeVar(Interpreter *interpreter, Stmt *stmt)
 
 	defineVariable(interpreter->environment, stmt->as.var.name.lexeme, value);
 	freeValue(value);
+}
+// 解析多变量声明
+static void executeMultiVar(Interpreter *interpreter, Stmt *stmt)
+{
+    // 评估初始值（如果有）
+    Value initialValue = createNull();
+    if (stmt->as.multiVar.initializer != NULL)
+    {
+        initialValue = evaluate(interpreter, stmt->as.multiVar.initializer);
+    }
+
+    // 为每个变量定义相同的值（复制初始值）
+    for (int i = 0; i < stmt->as.multiVar.count; i++)
+    {
+        Value valueCopy = copyValue(initialValue);
+        defineVariable(interpreter->environment, stmt->as.multiVar.names[i].lexeme, valueCopy);
+        freeValue(valueCopy); // defineVariable会创建自己的副本
+    }
+
+    // 释放原始初始值
+    freeValue(initialValue);
 }
 
 // 执行代码块

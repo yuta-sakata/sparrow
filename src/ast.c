@@ -70,6 +70,21 @@ Expr *createCallExpr(Expr *callee, Token paren, Expr **arguments, int argCount)
     return expr;
 }
 
+// 创建多变量声明
+Stmt *createMultiVarStmt(Token *names, int count, Token type, Expr *initializer)
+{
+    Stmt *stmt = (Stmt *)malloc(sizeof(Stmt));
+    stmt->type = STMT_MULTI_VAR;
+
+    stmt->as.multiVar.names = names; // 直接使用传入的名称数组
+    stmt->as.multiVar.count = count;
+    stmt->as.multiVar.type = type;
+    stmt->as.multiVar.initializer = initializer;
+
+    return stmt;
+}
+
+// 创建表达式语句
 Stmt *createExpressionStmt(Expr *expression)
 {
     Stmt *stmt = (Stmt *)malloc(sizeof(Stmt));
@@ -179,6 +194,184 @@ Stmt *createReturnStmt(Token keyword, Expr *value)
     return stmt;
 }
 
+Expr *copyExpr(Expr *expr)
+{
+    if (expr == NULL)
+        return NULL;
+
+    switch (expr->type)
+    {
+    case EXPR_BINARY:
+    {
+        Expr *leftCopy = copyExpr(expr->as.binary.left);
+        Expr *rightCopy = copyExpr(expr->as.binary.right);
+        return createBinaryExpr(leftCopy, expr->as.binary.op, rightCopy);
+    }
+
+    case EXPR_UNARY:
+    {
+        Expr *rightCopy = copyExpr(expr->as.unary.right);
+        return createUnaryExpr(expr->as.unary.op, rightCopy);
+    }
+
+    case EXPR_LITERAL:
+    {
+        // 复制Token
+        Token tokenCopy = expr->as.literal.value;
+
+        // 如果是字符串类型，需要手动深度复制字符串内容
+        if (tokenCopy.type == TOKEN_STRING && tokenCopy.value.stringValue != NULL)
+        {
+            size_t strLen = strlen(tokenCopy.value.stringValue);
+            char *strCopy = (char *)malloc(strLen + 1); // +1 for null terminator
+            if (strCopy == NULL)
+            {
+                fprintf(stderr, "内存分配失败\n");
+                return NULL;
+            }
+            // 手动复制字符串
+            memcpy(strCopy, tokenCopy.value.stringValue, strLen);
+            strCopy[strLen] = '\0'; // 确保字符串以null结尾
+            tokenCopy.value.stringValue = strCopy;
+        }
+
+        // 如果token.lexeme需要复制
+        if (tokenCopy.lexeme != NULL)
+        {
+            size_t lexLen = strlen(tokenCopy.lexeme);
+            char *lexCopy = (char *)malloc(lexLen + 1); // +1 for null terminator
+            if (lexCopy == NULL)
+            {
+                if (tokenCopy.type == TOKEN_STRING)
+                    free(tokenCopy.value.stringValue);
+                fprintf(stderr, "内存分配失败\n");
+                return NULL;
+            }
+            // 手动复制字符串
+            memcpy(lexCopy, tokenCopy.lexeme, lexLen);
+            lexCopy[lexLen] = '\0'; // 确保字符串以null结尾
+            tokenCopy.lexeme = lexCopy;
+        }
+
+        return createLiteralExpr(tokenCopy);
+    }
+
+    case EXPR_GROUPING:
+    {
+        Expr *exprCopy = copyExpr(expr->as.grouping.expression);
+        return createGroupingExpr(exprCopy);
+    }
+
+    case EXPR_VARIABLE:
+    {
+        // 复制Token
+        Token nameCopy = expr->as.variable.name;
+        if (nameCopy.lexeme != NULL)
+        {
+            size_t lexLen = strlen(nameCopy.lexeme);
+            char *lexCopy = (char *)malloc(lexLen + 1); // +1 for null terminator
+            if (lexCopy == NULL)
+            {
+                fprintf(stderr, "内存分配失败\n");
+                return NULL;
+            }
+            // 手动复制字符串
+            memcpy(lexCopy, nameCopy.lexeme, lexLen);
+            lexCopy[lexLen] = '\0'; // 确保字符串以null结尾
+            nameCopy.lexeme = lexCopy;
+        }
+        return createVariableExpr(nameCopy);
+    }
+
+    case EXPR_ASSIGN:
+    {
+        // 复制Token
+        Token nameCopy = expr->as.assign.name;
+        if (nameCopy.lexeme != NULL)
+        {
+            size_t lexLen = strlen(nameCopy.lexeme);
+            char *lexCopy = (char *)malloc(lexLen + 1); // +1 for null terminator
+            if (lexCopy == NULL)
+            {
+                fprintf(stderr, "内存分配失败\n");
+                return NULL;
+            }
+            // 手动复制字符串
+            memcpy(lexCopy, nameCopy.lexeme, lexLen);
+            lexCopy[lexLen] = '\0'; // 确保字符串以null结尾
+            nameCopy.lexeme = lexCopy;
+        }
+
+        Expr *valueCopy = copyExpr(expr->as.assign.value);
+        return createAssignExpr(nameCopy, valueCopy);
+    }
+
+    case EXPR_CALL:
+    {
+        Expr *calleeCopy = copyExpr(expr->as.call.callee);
+
+        // 复制Token
+        Token parenCopy = expr->as.call.paren;
+        if (parenCopy.lexeme != NULL)
+        {
+            size_t lexLen = strlen(parenCopy.lexeme);
+            char *lexCopy = (char *)malloc(lexLen + 1); // +1 for null terminator
+            if (lexCopy == NULL)
+            {
+                freeExpr(calleeCopy);
+                fprintf(stderr, "内存分配失败\n");
+                return NULL;
+            }
+            // 手动复制字符串
+            memcpy(lexCopy, parenCopy.lexeme, lexLen);
+            lexCopy[lexLen] = '\0'; // 确保字符串以null结尾
+            parenCopy.lexeme = lexCopy;
+        }
+
+        // 复制参数
+        Expr **argsCopy = NULL;
+        if (expr->as.call.argCount > 0)
+        {
+            argsCopy = (Expr **)malloc(sizeof(Expr *) * expr->as.call.argCount);
+            if (argsCopy == NULL)
+            {
+                freeExpr(calleeCopy);
+                if (parenCopy.lexeme != NULL)
+                    free(parenCopy.lexeme);
+                fprintf(stderr, "内存分配失败\n");
+                return NULL;
+            }
+
+            // 初始化为NULL，以便在出错时正确清理
+            for (int i = 0; i < expr->as.call.argCount; i++)
+                argsCopy[i] = NULL;
+
+            // 复制每个参数
+            for (int i = 0; i < expr->as.call.argCount; i++)
+            {
+                argsCopy[i] = copyExpr(expr->as.call.arguments[i]);
+                if (argsCopy[i] == NULL)
+                {
+                    // 清理已复制的参数
+                    for (int j = 0; j < i; j++)
+                        freeExpr(argsCopy[j]);
+                    free(argsCopy);
+                    freeExpr(calleeCopy);
+                    if (parenCopy.lexeme != NULL)
+                        free(parenCopy.lexeme);
+                    return NULL;
+                }
+            }
+        }
+
+        return createCallExpr(calleeCopy, parenCopy, argsCopy, expr->as.call.argCount);
+    }
+
+    default:
+        fprintf(stderr, "未知的表达式类型\n");
+        return NULL;
+    }
+}
 // 释放表达式节点内存
 void freeExpr(Expr *expr)
 {
@@ -230,6 +423,16 @@ void freeStmt(Stmt *stmt)
         break;
     case STMT_VAR:
         freeExpr(stmt->as.var.initializer);
+        break;
+    case STMT_MULTI_VAR:
+        if (stmt->as.multiVar.initializer != NULL)
+        {
+            freeExpr(stmt->as.multiVar.initializer);
+        }
+        if (stmt->as.multiVar.names != NULL)
+        {
+            free(stmt->as.multiVar.names);
+        }
         break;
     case STMT_BLOCK:
         for (int i = 0; i < stmt->as.block.count; i++)

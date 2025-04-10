@@ -122,17 +122,44 @@ static Stmt *declaration(Parser *parser)
 
     if (match(parser, TOKEN_VAR))
     {
+        // 创建存储多个变量名的数组
+        int capacity = 4;
+        int count = 0;
+        Token *names = (Token *)malloc(sizeof(Token) * capacity);
+
+        // 解析第一个变量名
         Token name = consume(parser, TOKEN_IDENTIFIER, "Expect variable name.");
         if (parser->hadError)
+        {
+            free(names);
             return NULL;
+        }
+        names[count++] = name;
 
+        // 处理连续的变量声明（用逗号分隔）
+        while (match(parser, TOKEN_COMMA))
+        {
+            if (count >= capacity)
+            {
+                capacity *= 2;
+                names = (Token *)realloc(names, sizeof(Token) * capacity);
+            }
+
+            name = consume(parser, TOKEN_IDENTIFIER, "Expect variable name after ','.");
+            if (parser->hadError)
+            {
+                free(names);
+                return NULL;
+            }
+            names[count++] = name;
+        }
+
+        // 处理类型注解（所有变量共用相同类型）
         Token type = {0};
-        type.type = TOKEN_VOID; // 默认为 void 类型
+        type.type = TOKEN_VOID; // 默认值
 
-        // 处理类型注解
         if (match(parser, TOKEN_COLON))
         {
-            // 解析类型
             if (match(parser, TOKEN_INT))
             {
                 type = previous(parser);
@@ -149,13 +176,21 @@ static Stmt *declaration(Parser *parser)
             {
                 type = previous(parser);
             }
+            else if (match(parser, TOKEN_VOID))
+            {
+                error(parser, "void can only be used as a function return type");
+                free(names);
+                return NULL;
+            }
             else
             {
                 error(parser, "Expected type annotation.");
+                free(names);
                 return NULL;
             }
         }
 
+        // 处理初始值（可选，所有变量共用相同初始值）
         Expr *initializer = NULL;
         if (match(parser, TOKEN_ASSIGN))
         {
@@ -164,12 +199,28 @@ static Stmt *declaration(Parser *parser)
 
         consume(parser, TOKEN_SEMICOLON, "Expect ';' after variable declaration.");
         if (parser->hadError)
+        {
+            if (initializer)
+                freeExpr(initializer);
+            free(names);
             return NULL;
+        }
 
-        return createVarStmt(name, type, initializer);
+        // 为多个变量创建声明语句
+        if (count == 1)
+        {
+            // 只有一个变量，直接创建并返回单个语句
+            Stmt *stmt = createVarStmt(names[0], type, initializer);
+            free(names);
+            return stmt;
+        }
+        else
+        {
+            return createMultiVarStmt(names, count, type, initializer);
+        }
     }
-    
-     return statement(parser);
+
+    return statement(parser);
 }
 
 // 解析函数声明

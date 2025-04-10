@@ -1,3 +1,8 @@
 function main():void {
-	print("Hello,world!");
+	var a,b,c:int=10;
+	var see_hello:string="Hello,world!";
+	print(see_hello);
+	print(a);
+	print(b);
+	print(c);
 }

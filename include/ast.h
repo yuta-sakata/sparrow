@@ -5,6 +5,10 @@
 #include "lexer.h"
 #include "type_system.h"
 
+// 前向声明
+typedef struct Expr Expr;
+typedef struct Stmt Stmt;
+
 // 表达式类型
 typedef enum
 {
@@ -22,6 +26,7 @@ typedef enum
 {
     STMT_EXPRESSION, // 表达式语句
     STMT_VAR,        // 变量声明
+    STMT_MULTI_VAR,  // 多变量声明
     STMT_BLOCK,      // 代码块
     STMT_IF,         // if语句
     STMT_WHILE,      // while循环
@@ -30,9 +35,13 @@ typedef enum
     STMT_RETURN,     // return语句
 } StmtType;
 
-// 前向声明
-typedef struct Expr Expr;
-typedef struct Stmt Stmt;
+// 多变量声明语句结构
+typedef struct {
+    Token *names;      // 变量名数组
+    int count;         // 变量数量
+    Token type;        // 共享的类型
+    Expr *initializer; // 共享的初始值
+} MultiVarStmt;
 
 // 二元表达式
 typedef struct
@@ -149,8 +158,8 @@ typedef struct
 {
     Token name;
     Token *params;
-    TypeAnnotation* paramTypes;  // 修改为 TypeAnnotation*
-    TypeAnnotation returnType;   // 修改为 TypeAnnotation
+    TypeAnnotation *paramTypes; // 修改为 TypeAnnotation*
+    TypeAnnotation returnType;  // 修改为 TypeAnnotation
     int paramCount;
     struct Stmt *body;
 } FunctionStmt;
@@ -170,6 +179,7 @@ struct Stmt
     {
         ExpressionStmt expression;
         VarStmt var;
+        MultiVarStmt multiVar;
         BlockStmt block;
         IfStmt ifStmt;
         WhileStmt whileLoop;
@@ -187,10 +197,12 @@ Expr *createGroupingExpr(Expr *expression);
 Expr *createVariableExpr(Token name);
 Expr *createAssignExpr(Token name, Expr *value);
 Expr *createCallExpr(Expr *callee, Token paren, Expr **arguments, int argCount);
+Expr *copyExpr(Expr *expr);
 
 // 创建语句节点的函数
 Stmt *createExpressionStmt(Expr *expression);
 Stmt *createVarStmt(Token name, Token type, Expr *initializer);
+Stmt *createMultiVarStmt(Token *names, int count, Token type, Expr *initializer);
 Stmt *createBlockStmt(Stmt **statements, int count);
 Stmt *createIfStmt(Expr *condition, Stmt *thenBranch, Stmt *elseBranch);
 Stmt *createWhileStmt(Expr *condition, Stmt *body);
