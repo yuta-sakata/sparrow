@@ -516,17 +516,7 @@ static Value evaluateVariable(Interpreter *interpreter, Expr *expr)
         return createNull();
     }
 
-    // 添加调试输出
-    printf("DEBUG: Looking for variable '%s'\n", expr->as.variable.name.lexeme);
-
     Value result = getVariable(interpreter->environment, expr->as.variable.name);
-    
-    // 检查是否找到变量
-    if (result.type == VAL_NULL) {
-        printf("DEBUG: Variable '%s' not found\n", expr->as.variable.name.lexeme);
-    } else {
-        printf("DEBUG: Variable '%s' found, type: %d\n", expr->as.variable.name.lexeme, result.type);
-    }
 
     return result;
 }
@@ -756,9 +746,6 @@ static void executeFunction(Interpreter *interpreter, Stmt *stmt)
     }
     strcpy(function->name, stmt->as.function.name.lexeme);
 
-    // 添加调试输出
-    printf("DEBUG: Defining function '%s'\n", function->name);
-
     function->arity = stmt->as.function.paramCount;
     function->paramTypes = NULL;
     function->returnType = stmt->as.function.returnType;
@@ -819,9 +806,6 @@ static void executeFunction(Interpreter *interpreter, Stmt *stmt)
 
     Value functionValue = createFunction(function);
     defineVariable(interpreter->environment, function->name, functionValue);
-    
-    // 添加调试输出确认函数已定义
-    printf("DEBUG: Function '%s' defined in environment\n", function->name);
 }
 
 // 执行返回语句
