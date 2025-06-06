@@ -52,30 +52,39 @@ void initInterpreter(Interpreter *interpreter)
 	registerAllNativeFunctions(interpreter);
 }
 
-// 解释程序
-// 修改 interpret 函数以自动调用 main 函数
 void interpret(Interpreter *interpreter, Stmt **statements, int count)
-{
-	// 首先执行所有顶层语句
-	for (int i = 0; i < count; i++)
-	{
-		execute(interpreter, statements[i]);
-		if (interpreter->hadError)
-			return;
-	}
+{    
+    // 第一阶段：只执行函数定义
+    for (int i = 0; i < count; i++)
+    {
+        if (statements[i]->type == STMT_FUNCTION)
+        {
+            execute(interpreter, statements[i]);
+            if (interpreter->hadError)
+            {
+                return;
+            }
+        }
+    }
 
-	// 如果找到了 main 函数，自动调用它
-	if (interpreter->hasMainFunction && interpreter->mainFunction != NULL)
-	{
-		// 创建空参数数组（main 函数不接受参数）
-		Value *noArgs = NULL;
+    // 第二阶段：执行其他语句
+    for (int i = 0; i < count; i++)
+    {
+        if (statements[i]->type != STMT_FUNCTION)
+        {
+            execute(interpreter, statements[i]);
+            if (interpreter->hadError)
+                return;
+        }
+    }
 
-		// 调用 main 函数
-		Value result = callFunction(interpreter, interpreter->mainFunction, noArgs, 0);
-
-		// 释放返回值
-		freeValue(result);
-	}
+    // 如果找到了 main 函数，自动调用它
+    if (interpreter->hasMainFunction && interpreter->mainFunction != NULL)
+    {
+        Value *noArgs = NULL;
+        Value result = callFunction(interpreter, interpreter->mainFunction, noArgs, 0);
+        freeValue(result);
+    }
 }
 
 // 执行语句
@@ -494,22 +503,33 @@ static Value evaluateGrouping(Interpreter *interpreter, Expr *expr)
 // 实现变量表达式求值
 static Value evaluateVariable(Interpreter *interpreter, Expr *expr)
 {
-	// 安全检查
-	if (expr == NULL)
-	{
-		printf("ERROR: NULL expression in evaluateVariable\n");
-		return createNull();
-	}
+    // 安全检查
+    if (expr == NULL)
+    {
+        printf("ERROR: NULL expression in evaluateVariable\n");
+        return createNull();
+    }
 
-	if (expr->as.variable.name.lexeme == NULL)
-	{
-		printf("ERROR: NULL variable name in evaluateVariable\n");
-		return createNull();
-	}
+    if (expr->as.variable.name.lexeme == NULL)
+    {
+        printf("ERROR: NULL variable name in evaluateVariable\n");
+        return createNull();
+    }
 
-	return getVariable(interpreter->environment, expr->as.variable.name);
+    // 添加调试输出
+    printf("DEBUG: Looking for variable '%s'\n", expr->as.variable.name.lexeme);
+
+    Value result = getVariable(interpreter->environment, expr->as.variable.name);
+    
+    // 检查是否找到变量
+    if (result.type == VAL_NULL) {
+        printf("DEBUG: Variable '%s' not found\n", expr->as.variable.name.lexeme);
+    } else {
+        printf("DEBUG: Variable '%s' found, type: %d\n", expr->as.variable.name.lexeme, result.type);
+    }
+
+    return result;
 }
-
 // 实现赋值表达式求值
 static Value evaluateAssign(Interpreter *interpreter, Expr *expr)
 {
@@ -726,9 +746,8 @@ static void executeFunction(Interpreter *interpreter, Stmt *stmt)
         return;
     }
 
-
     size_t nameLen = strlen(stmt->as.function.name.lexeme);
-    function->name = (char *)malloc(nameLen + 1); // +1 为了空字符
+    function->name = (char *)malloc(nameLen + 1);
     if (function->name == NULL)
     {
         free(function);
@@ -737,12 +756,17 @@ static void executeFunction(Interpreter *interpreter, Stmt *stmt)
     }
     strcpy(function->name, stmt->as.function.name.lexeme);
 
+    // 添加调试输出
+    printf("DEBUG: Defining function '%s'\n", function->name);
+
     function->arity = stmt->as.function.paramCount;
-    function->paramTypes = NULL; // 初始化为NULL
+    function->paramTypes = NULL;
     function->returnType = stmt->as.function.returnType;
 
-    // 分配并存储参数名
-    function->paramNames = NULL;
+    // 这里缺少重要的函数属性设置！
+    // 需要设置参数名、函数体、闭包环境等
+    
+    // 分配参数名数组
     if (function->arity > 0)
     {
         function->paramNames = (char **)malloc(sizeof(char *) * function->arity);
@@ -753,12 +777,12 @@ static void executeFunction(Interpreter *interpreter, Stmt *stmt)
             runtimeError(interpreter, "内存分配失败");
             return;
         }
-
-        // 从 params Token 数组中复制参数名
+        
+        // 复制参数名
         for (int i = 0; i < function->arity; i++)
         {
-            size_t paramLen = strlen(stmt->as.function.params[i].lexeme);
-            function->paramNames[i] = (char *)malloc(paramLen + 1); // +1 为了空字符
+            size_t paramNameLen = strlen(stmt->as.function.params[i].lexeme);
+            function->paramNames[i] = (char *)malloc(paramNameLen + 1);
             if (function->paramNames[i] == NULL)
             {
                 // 清理已分配的内存
@@ -775,29 +799,29 @@ static void executeFunction(Interpreter *interpreter, Stmt *stmt)
             strcpy(function->paramNames[i], stmt->as.function.params[i].lexeme);
         }
     }
+    else
+    {
+        function->paramNames = NULL;
+    }
 
+    // 设置函数体
     function->body = stmt->as.function.body;
-    function->closure = interpreter->environment;
+    
+    // 设置闭包环境（当前为全局环境）
+    function->closure = interpreter->globals;
 
-    // 检查是否为 main 函数
+    // 检查是否是 main 函数
     if (strcmp(function->name, "main") == 0)
     {
-        // 检查参数数量（main 函数应该没有参数或有特定参数）
-        if (function->arity == 0)
-        {
-            // 记录找到了 main 函数
-            interpreter->hasMainFunction = true;
-            interpreter->mainFunction = function;
-        }
-        else
-        {
-            // 警告但不阻止，仍然允许定义带参数的 main 函数
-            printf("警告：main 函数应该没有参数\n");
-        }
+        interpreter->hasMainFunction = true;
+        interpreter->mainFunction = function;
     }
 
     Value functionValue = createFunction(function);
     defineVariable(interpreter->environment, function->name, functionValue);
+    
+    // 添加调试输出确认函数已定义
+    printf("DEBUG: Function '%s' defined in environment\n", function->name);
 }
 
 // 执行返回语句

@@ -230,40 +230,6 @@ static Stmt *functionDeclaration(Parser *parser)
     if (parser->hadError)
         return NULL;
 
-    // 首先检查是否有类型注解（冒号后跟类型）
-    Token returnType = {0};
-    returnType.type = TOKEN_VOID; // 默认返回类型为 void
-
-    if (match(parser, TOKEN_COLON))
-    {
-        // 解析返回类型
-        if (match(parser, TOKEN_VOID))
-        {
-            returnType = previous(parser);
-        }
-        else if (match(parser, TOKEN_INT))
-        {
-            returnType = previous(parser);
-        }
-        else if (match(parser, TOKEN_FLOAT_TYPE))
-        {
-            returnType = previous(parser);
-        }
-        else if (match(parser, TOKEN_STRING_TYPE))
-        {
-            returnType = previous(parser);
-        }
-        else if (match(parser, TOKEN_BOOL))
-        {
-            returnType = previous(parser);
-        }
-        else
-        {
-            error(parser, "Expected return type after ':'.");
-            return NULL;
-        }
-    }
-
     consume(parser, TOKEN_LPAREN, "Expect '(' after function name.");
     if (parser->hadError)
         return NULL;
@@ -337,6 +303,40 @@ static Stmt *functionDeclaration(Parser *parser)
     consume(parser, TOKEN_RPAREN, "Expect ')' after parameters.");
     if (parser->hadError)
         return NULL;
+
+    // 检查是否有返回类型注解（冒号后跟类型）
+    Token returnType = {0};
+    returnType.type = TOKEN_VOID; // 默认返回类型为 void
+
+    if (match(parser, TOKEN_COLON))
+    {
+        // 解析返回类型
+        if (match(parser, TOKEN_VOID))
+        {
+            returnType = previous(parser);
+        }
+        else if (match(parser, TOKEN_INT))
+        {
+            returnType = previous(parser);
+        }
+        else if (match(parser, TOKEN_FLOAT_TYPE))
+        {
+            returnType = previous(parser);
+        }
+        else if (match(parser, TOKEN_STRING_TYPE))
+        {
+            returnType = previous(parser);
+        }
+        else if (match(parser, TOKEN_BOOL))
+        {
+            returnType = previous(parser);
+        }
+        else
+        {
+            error(parser, "Expected return type after ':'.");
+            return NULL;
+        }
+    }
 
     // 函数体
     consume(parser, TOKEN_LBRACE, "Expect '{' before function body.");
