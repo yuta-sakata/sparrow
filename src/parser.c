@@ -360,6 +360,32 @@ static Stmt *varDeclaration(Parser *parser)
     Token type;
     type.type = TOKEN_VOID; // 默认值，实际上会被忽略
 
+    // 处理类型注解
+    if (match(parser, TOKEN_COLON))
+    {
+        if (match(parser, TOKEN_INT))
+        {
+            type = previous(parser);
+        }
+        else if (match(parser, TOKEN_FLOAT_TYPE))
+        {
+            type = previous(parser);
+        }
+        else if (match(parser, TOKEN_STRING_TYPE))
+        {
+            type = previous(parser);
+        }
+        else if (match(parser, TOKEN_BOOL))
+        {
+            type = previous(parser);
+        }
+        else
+        {
+            error(parser, "Expected type annotation after ':'.");
+            return NULL;
+        }
+    }
+
     Expr *initializer = NULL;
     if (match(parser, TOKEN_ASSIGN))
     {
@@ -368,7 +394,11 @@ static Stmt *varDeclaration(Parser *parser)
 
     consume(parser, TOKEN_SEMICOLON, "Expect ';' after variable declaration.");
     if (parser->hadError)
+    {
+        if (initializer)
+            freeExpr(initializer);
         return NULL;
+    }
 
     return createVarStmt(name, type, initializer);
 }
@@ -518,6 +548,11 @@ static Stmt *forStatement(Parser *parser)
     if (match(parser, TOKEN_SEMICOLON))
     {
         // 没有初始化
+    }
+    else if (check(parser, TOKEN_VAR))
+    {
+        advance(parser);
+        initializer = varDeclaration(parser);
     }
     else if (check(parser, TOKEN_INT) || check(parser, TOKEN_FLOAT_TYPE) ||
              check(parser, TOKEN_STRING_TYPE) || check(parser, TOKEN_BOOL))

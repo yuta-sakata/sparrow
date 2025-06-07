@@ -54,38 +54,38 @@ void initInterpreter(Interpreter *interpreter)
 }
 
 void interpret(Interpreter *interpreter, Stmt **statements, int count)
-{    
-    // 第一阶段：只执行函数定义
-    for (int i = 0; i < count; i++)
-    {
-        if (statements[i]->type == STMT_FUNCTION)
-        {
-            execute(interpreter, statements[i]);
-            if (interpreter->hadError)
-            {
-                return;
-            }
-        }
-    }
+{
+	// 第一阶段：只执行函数定义
+	for (int i = 0; i < count; i++)
+	{
+		if (statements[i]->type == STMT_FUNCTION)
+		{
+			execute(interpreter, statements[i]);
+			if (interpreter->hadError)
+			{
+				return;
+			}
+		}
+	}
 
-    // 第二阶段：执行其他语句
-    for (int i = 0; i < count; i++)
-    {
-        if (statements[i]->type != STMT_FUNCTION)
-        {
-            execute(interpreter, statements[i]);
-            if (interpreter->hadError)
-                return;
-        }
-    }
+	// 第二阶段：执行其他语句
+	for (int i = 0; i < count; i++)
+	{
+		if (statements[i]->type != STMT_FUNCTION)
+		{
+			execute(interpreter, statements[i]);
+			if (interpreter->hadError)
+				return;
+		}
+	}
 
-    // 如果找到了 main 函数，自动调用它
-    if (interpreter->hasMainFunction && interpreter->mainFunction != NULL)
-    {
-        Value *noArgs = NULL;
-        Value result = callFunction(interpreter, interpreter->mainFunction, noArgs, 0);
-        freeValue(result);
-    }
+	// 如果找到了 main 函数，自动调用它
+	if (interpreter->hasMainFunction && interpreter->mainFunction != NULL)
+	{
+		Value *noArgs = NULL;
+		Value result = callFunction(interpreter, interpreter->mainFunction, noArgs, 0);
+		freeValue(result);
+	}
 }
 
 // 执行语句
@@ -154,7 +154,7 @@ Value evaluate(Interpreter *interpreter, Expr *expr)
 	case EXPR_CALL:
 		return evaluateCall(interpreter, expr);
 	case EXPR_POSTFIX:
-        return evaluatePostfix(interpreter, expr);
+		return evaluatePostfix(interpreter, expr);
 	}
 
 	return createNull();
@@ -195,23 +195,23 @@ static void executeVar(Interpreter *interpreter, Stmt *stmt)
 // 解析多变量声明
 static void executeMultiVar(Interpreter *interpreter, Stmt *stmt)
 {
-    // 评估初始值（如果有）
-    Value initialValue = createNull();
-    if (stmt->as.multiVar.initializer != NULL)
-    {
-        initialValue = evaluate(interpreter, stmt->as.multiVar.initializer);
-    }
+	// 评估初始值（如果有）
+	Value initialValue = createNull();
+	if (stmt->as.multiVar.initializer != NULL)
+	{
+		initialValue = evaluate(interpreter, stmt->as.multiVar.initializer);
+	}
 
-    // 为每个变量定义相同的值（复制初始值）
-    for (int i = 0; i < stmt->as.multiVar.count; i++)
-    {
-        Value valueCopy = copyValue(initialValue);
-        defineVariable(interpreter->environment, stmt->as.multiVar.names[i].lexeme, valueCopy);
-        freeValue(valueCopy); // defineVariable会创建自己的副本
-    }
+	// 为每个变量定义相同的值（复制初始值）
+	for (int i = 0; i < stmt->as.multiVar.count; i++)
+	{
+		Value valueCopy = copyValue(initialValue);
+		defineVariable(interpreter->environment, stmt->as.multiVar.names[i].lexeme, valueCopy);
+		freeValue(valueCopy); // defineVariable会创建自己的副本
+	}
 
-    // 释放原始初始值
-    freeValue(initialValue);
+	// 释放原始初始值
+	freeValue(initialValue);
 }
 
 // 执行代码块
@@ -431,7 +431,64 @@ static Value evaluateBinary(Interpreter *interpreter, Expr *expr)
 			freeValue(right);
 			return createNumber(result);
 		}
-	case TOKEN_EQ: // 相等运算符 (==)
+	case TOKEN_LT: // 小于运算符 (<)
+		if (left.type != VAL_NUMBER || right.type != VAL_NUMBER)
+		{
+			freeValue(left);
+			freeValue(right);
+			runtimeError(interpreter, "< 运算符的操作数必须是数字。");
+			return createNull();
+		}
+		{
+			bool result = left.as.number < right.as.number;
+			freeValue(left);
+			freeValue(right);
+			return createBool(result);
+		}
+	case TOKEN_LE: // 小于等于运算符 (<=)
+		if (left.type != VAL_NUMBER || right.type != VAL_NUMBER)
+		{
+			freeValue(left);
+			freeValue(right);
+			runtimeError(interpreter, "<= 运算符的操作数必须是数字。");
+			return createNull();
+		}
+		{
+			bool result = left.as.number <= right.as.number;
+			freeValue(left);
+			freeValue(right);
+			return createBool(result);
+		}
+	case TOKEN_GT: // 大于运算符 (>)
+		if (left.type != VAL_NUMBER || right.type != VAL_NUMBER)
+		{
+			freeValue(left);
+			freeValue(right);
+			runtimeError(interpreter, "> 运算符的操作数必须是数字。");
+			return createNull();
+		}
+		{
+			bool result = left.as.number > right.as.number;
+			freeValue(left);
+			freeValue(right);
+			return createBool(result);
+		}
+	case TOKEN_GE: // 大于等于运算符 (>=)
+		if (left.type != VAL_NUMBER || right.type != VAL_NUMBER)
+		{
+			freeValue(left);
+			freeValue(right);
+			runtimeError(interpreter, ">= 运算符的操作数必须是数字。");
+			return createNull();
+		}
+		{
+			bool result = left.as.number >= right.as.number;
+			freeValue(left);
+			freeValue(right);
+			return createBool(result);
+		}
+
+	case TOKEN_EQ: // 等于运算符 (==)
 	{
 		bool result = valuesEqual(left, right);
 		freeValue(left);
@@ -445,7 +502,7 @@ static Value evaluateBinary(Interpreter *interpreter, Expr *expr)
 		freeValue(right);
 		return createBool(result);
 	}
-	}
+		}
 
 	freeValue(left);
 	freeValue(right);
@@ -506,22 +563,22 @@ static Value evaluateGrouping(Interpreter *interpreter, Expr *expr)
 // 实现变量表达式求值
 static Value evaluateVariable(Interpreter *interpreter, Expr *expr)
 {
-    // 安全检查
-    if (expr == NULL)
-    {
-        printf("ERROR: NULL expression in evaluateVariable\n");
-        return createNull();
-    }
+	// 安全检查
+	if (expr == NULL)
+	{
+		printf("ERROR: NULL expression in evaluateVariable\n");
+		return createNull();
+	}
 
-    if (expr->as.variable.name.lexeme == NULL)
-    {
-        printf("ERROR: NULL variable name in evaluateVariable\n");
-        return createNull();
-    }
+	if (expr->as.variable.name.lexeme == NULL)
+	{
+		printf("ERROR: NULL variable name in evaluateVariable\n");
+		return createNull();
+	}
 
-    Value result = getVariable(interpreter->environment, expr->as.variable.name);
+	Value result = getVariable(interpreter->environment, expr->as.variable.name);
 
-    return result;
+	return result;
 }
 // 实现赋值表达式求值
 static Value evaluateAssign(Interpreter *interpreter, Expr *expr)
@@ -539,53 +596,53 @@ static Value evaluateAssign(Interpreter *interpreter, Expr *expr)
 
 Value evaluatePostfix(Interpreter *interpreter, Expr *expr)
 {
-    // 确保操作数是变量
-    if (expr->as.postfix.operand->type != EXPR_VARIABLE)
-    {
-        runtimeError(interpreter, "后缀运算符只能应用于变量。");
-        return createNull();
-    }
+	// 确保操作数是变量
+	if (expr->as.postfix.operand->type != EXPR_VARIABLE)
+	{
+		runtimeError(interpreter, "后缀运算符只能应用于变量。");
+		return createNull();
+	}
 
-    // 获取变量的当前值
-    Token varName = expr->as.postfix.operand->as.variable.name;
-    Value oldValue = getVariable(interpreter->environment, varName);
-    
-    if (interpreter->hadError)
-    {
-        return createNull();
-    }
+	// 获取变量的当前值
+	Token varName = expr->as.postfix.operand->as.variable.name;
+	Value oldValue = getVariable(interpreter->environment, varName);
 
-    // 检查变量类型
-    if (oldValue.type != VAL_NUMBER)
-    {
-        freeValue(oldValue);
-        runtimeError(interpreter, "后缀运算符只能应用于数字类型。");
-        return createNull();
-    }
+	if (interpreter->hadError)
+	{
+		return createNull();
+	}
 
-    // 计算新值
-    Value newValue;
-    if (expr->as.postfix.op == TOKEN_PLUS_PLUS)
-    {
-        newValue = createNumber(oldValue.as.number + 1);
-    }
-    else if (expr->as.postfix.op == TOKEN_MINUS_MINUS)
-    {
-        newValue = createNumber(oldValue.as.number - 1);
-    }
-    else
-    {
-        freeValue(oldValue);
-        runtimeError(interpreter, "未知的后缀运算符。");
-        return createNull();
-    }
+	// 检查变量类型
+	if (oldValue.type != VAL_NUMBER)
+	{
+		freeValue(oldValue);
+		runtimeError(interpreter, "后缀运算符只能应用于数字类型。");
+		return createNull();
+	}
 
-    // 更新变量值
-    assignVariable(interpreter->environment, varName, newValue);
-    freeValue(newValue);
+	// 计算新值
+	Value newValue;
+	if (expr->as.postfix.op == TOKEN_PLUS_PLUS)
+	{
+		newValue = createNumber(oldValue.as.number + 1);
+	}
+	else if (expr->as.postfix.op == TOKEN_MINUS_MINUS)
+	{
+		newValue = createNumber(oldValue.as.number - 1);
+	}
+	else
+	{
+		freeValue(oldValue);
+		runtimeError(interpreter, "未知的后缀运算符。");
+		return createNull();
+	}
 
-    // 后缀运算符返回原来的值
-    return oldValue;
+	// 更新变量值
+	assignVariable(interpreter->environment, varName, newValue);
+	freeValue(newValue);
+
+	// 后缀运算符返回原来的值
+	return oldValue;
 }
 
 // 实现条件语句执行
@@ -782,84 +839,84 @@ static Value evaluateCall(Interpreter *interpreter, Expr *expr)
 // 执行函数声明
 static void executeFunction(Interpreter *interpreter, Stmt *stmt)
 {
-    // 创建函数对象
-    Function *function = (Function *)malloc(sizeof(Function));
-    if (function == NULL)
-    {
-        runtimeError(interpreter, "内存分配失败");
-        return;
-    }
+	// 创建函数对象
+	Function *function = (Function *)malloc(sizeof(Function));
+	if (function == NULL)
+	{
+		runtimeError(interpreter, "内存分配失败");
+		return;
+	}
 
-    size_t nameLen = strlen(stmt->as.function.name.lexeme);
-    function->name = (char *)malloc(nameLen + 1);
-    if (function->name == NULL)
-    {
-        free(function);
-        runtimeError(interpreter, "内存分配失败");
-        return;
-    }
-    strcpy(function->name, stmt->as.function.name.lexeme);
+	size_t nameLen = strlen(stmt->as.function.name.lexeme);
+	function->name = (char *)malloc(nameLen + 1);
+	if (function->name == NULL)
+	{
+		free(function);
+		runtimeError(interpreter, "内存分配失败");
+		return;
+	}
+	strcpy(function->name, stmt->as.function.name.lexeme);
 
-    function->arity = stmt->as.function.paramCount;
-    function->paramTypes = NULL;
-    function->returnType = stmt->as.function.returnType;
+	function->arity = stmt->as.function.paramCount;
+	function->paramTypes = NULL;
+	function->returnType = stmt->as.function.returnType;
 
-    // 这里缺少重要的函数属性设置！
-    // 需要设置参数名、函数体、闭包环境等
-    
-    // 分配参数名数组
-    if (function->arity > 0)
-    {
-        function->paramNames = (char **)malloc(sizeof(char *) * function->arity);
-        if (function->paramNames == NULL)
-        {
-            free(function->name);
-            free(function);
-            runtimeError(interpreter, "内存分配失败");
-            return;
-        }
-        
-        // 复制参数名
-        for (int i = 0; i < function->arity; i++)
-        {
-            size_t paramNameLen = strlen(stmt->as.function.params[i].lexeme);
-            function->paramNames[i] = (char *)malloc(paramNameLen + 1);
-            if (function->paramNames[i] == NULL)
-            {
-                // 清理已分配的内存
-                for (int j = 0; j < i; j++)
-                {
-                    free(function->paramNames[j]);
-                }
-                free(function->paramNames);
-                free(function->name);
-                free(function);
-                runtimeError(interpreter, "内存分配失败");
-                return;
-            }
-            strcpy(function->paramNames[i], stmt->as.function.params[i].lexeme);
-        }
-    }
-    else
-    {
-        function->paramNames = NULL;
-    }
+	// 这里缺少重要的函数属性设置！
+	// 需要设置参数名、函数体、闭包环境等
 
-    // 设置函数体
-    function->body = stmt->as.function.body;
-    
-    // 设置闭包环境（当前为全局环境）
-    function->closure = interpreter->globals;
+	// 分配参数名数组
+	if (function->arity > 0)
+	{
+		function->paramNames = (char **)malloc(sizeof(char *) * function->arity);
+		if (function->paramNames == NULL)
+		{
+			free(function->name);
+			free(function);
+			runtimeError(interpreter, "内存分配失败");
+			return;
+		}
 
-    // 检查是否是 main 函数
-    if (strcmp(function->name, "main") == 0)
-    {
-        interpreter->hasMainFunction = true;
-        interpreter->mainFunction = function;
-    }
+		// 复制参数名
+		for (int i = 0; i < function->arity; i++)
+		{
+			size_t paramNameLen = strlen(stmt->as.function.params[i].lexeme);
+			function->paramNames[i] = (char *)malloc(paramNameLen + 1);
+			if (function->paramNames[i] == NULL)
+			{
+				// 清理已分配的内存
+				for (int j = 0; j < i; j++)
+				{
+					free(function->paramNames[j]);
+				}
+				free(function->paramNames);
+				free(function->name);
+				free(function);
+				runtimeError(interpreter, "内存分配失败");
+				return;
+			}
+			strcpy(function->paramNames[i], stmt->as.function.params[i].lexeme);
+		}
+	}
+	else
+	{
+		function->paramNames = NULL;
+	}
 
-    Value functionValue = createFunction(function);
-    defineVariable(interpreter->environment, function->name, functionValue);
+	// 设置函数体
+	function->body = stmt->as.function.body;
+
+	// 设置闭包环境（当前为全局环境）
+	function->closure = interpreter->globals;
+
+	// 检查是否是 main 函数
+	if (strcmp(function->name, "main") == 0)
+	{
+		interpreter->hasMainFunction = true;
+		interpreter->mainFunction = function;
+	}
+
+	Value functionValue = createFunction(function);
+	defineVariable(interpreter->environment, function->name, functionValue);
 }
 
 // 执行返回语句
