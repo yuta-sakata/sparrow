@@ -240,11 +240,12 @@ static Token errorToken(Lexer *lexer, const char *message)
     token.type = TOKEN_ERROR;
 
     size_t messageLen = strlen(message);
-    token.lexeme = (char *)malloc(messageLen + 1); 
-    if (token.lexeme != NULL) {
+    token.lexeme = (char *)malloc(messageLen + 1);
+    if (token.lexeme != NULL)
+    {
         strcpy(token.lexeme, message);
     }
-    
+
     token.line = lexer->line;
 
     return token;
@@ -399,8 +400,16 @@ Token nextToken(Lexer *lexer)
     case ':':
         return makeToken(lexer, TOKEN_COLON);
     case '+':
+        if (match(lexer, '+'))
+        {
+            return makeToken(lexer, TOKEN_PLUS_PLUS);
+        }
         return makeToken(lexer, TOKEN_PLUS);
     case '-':
+        if (match(lexer, '-'))
+        {
+            return makeToken(lexer, TOKEN_MINUS_MINUS);
+        }
         return makeToken(lexer, TOKEN_MINUS);
     case '*':
         return makeToken(lexer, TOKEN_MULTIPLY);

@@ -14,6 +14,7 @@ typedef enum
 {
     EXPR_BINARY,   // 二元表达式
     EXPR_UNARY,    // 一元表达式
+    EXPR_POSTFIX,    // 后缀表达式
     EXPR_LITERAL,  // 字面量
     EXPR_GROUPING, // 分组表达式
     EXPR_VARIABLE, // 变量引用
@@ -58,6 +59,13 @@ typedef struct
     Expr *right;
 } UnaryExpr;
 
+// 后缀表达式
+typedef struct
+{
+    Expr *operand;  // 被操作的变量
+    TokenType op;   // 运算符 (++ 或 --)
+} PostfixExpr;
+
 // 字面量表达式
 typedef struct
 {
@@ -101,6 +109,7 @@ struct Expr
         BinaryExpr binary;
         UnaryExpr unary;
         LiteralExpr literal;
+        PostfixExpr postfix;
         GroupingExpr grouping;
         VariableExpr variable;
         AssignExpr assign;
@@ -197,6 +206,7 @@ Expr *createGroupingExpr(Expr *expression);
 Expr *createVariableExpr(Token name);
 Expr *createAssignExpr(Token name, Expr *value);
 Expr *createCallExpr(Expr *callee, Token paren, Expr **arguments, int argCount);
+Expr *createPostfixExpr(Expr *operand, TokenType op);
 Expr *copyExpr(Expr *expr);
 
 // 创建语句节点的函数

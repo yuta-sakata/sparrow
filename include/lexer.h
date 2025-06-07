@@ -18,6 +18,8 @@ typedef enum
 	// 运算符
 	TOKEN_PLUS,		// +
 	TOKEN_MINUS,	// -
+	TOKEN_PLUS_PLUS,    // ++
+    TOKEN_MINUS_MINUS,  // --
 	TOKEN_MULTIPLY, // *
 	TOKEN_DIVIDE,	// /
 	TOKEN_MODULO,	// %

@@ -633,7 +633,7 @@ static Expr *equality(Parser *parser)
 
     while (match(parser, TOKEN_EQ) || match(parser, TOKEN_NE))
     {
-        TokenType operator= previous(parser).type;
+        TokenType operator = previous(parser).type;
         Expr *right = comparison(parser);
         expr = createBinaryExpr(expr, operator, right);
     }
@@ -649,7 +649,7 @@ static Expr *comparison(Parser *parser)
     while (match(parser, TOKEN_LT) || match(parser, TOKEN_LE) ||
            match(parser, TOKEN_GT) || match(parser, TOKEN_GE))
     {
-        TokenType operator= previous(parser).type;
+        TokenType operator = previous(parser).type;
         Expr *right = term(parser);
         expr = createBinaryExpr(expr, operator, right);
     }
@@ -664,7 +664,7 @@ static Expr *term(Parser *parser)
 
     while (match(parser, TOKEN_PLUS) || match(parser, TOKEN_MINUS))
     {
-        TokenType operator= previous(parser).type;
+        TokenType operator = previous(parser).type;
         Expr *right = factor(parser);
         expr = createBinaryExpr(expr, operator, right);
     }
@@ -679,7 +679,7 @@ static Expr *factor(Parser *parser)
 
     while (match(parser, TOKEN_MULTIPLY) || match(parser, TOKEN_DIVIDE) || match(parser, TOKEN_MODULO))
     {
-        TokenType operator= previous(parser).type;
+        TokenType operator = previous(parser).type;
         Expr *right = unary(parser);
         expr = createBinaryExpr(expr, operator, right);
     }
@@ -692,7 +692,7 @@ static Expr *unary(Parser *parser)
 {
     if (match(parser, TOKEN_MINUS) || match(parser, TOKEN_PLUS))
     {
-        TokenType operator= previous(parser).type;
+        TokenType operator = previous(parser).type;
         Expr *right = unary(parser);
         return createUnaryExpr(operator, right);
     }
@@ -710,6 +710,20 @@ static Expr *call(Parser *parser)
         if (match(parser, TOKEN_LPAREN))
         {
             expr = finishCall(parser, expr);
+        }
+        else if (match(parser, TOKEN_PLUS_PLUS) || match(parser, TOKEN_MINUS_MINUS))
+        {
+            TokenType op = previous(parser).type;
+
+            // 检查左操作数是否是变量
+            if (expr->type != EXPR_VARIABLE)
+            {
+                error(parser, "Invalid left-hand side in postfix expression.");
+                freeExpr(expr);
+                return NULL;
+            }
+
+            expr = createPostfixExpr(expr, op);
         }
         else
         {

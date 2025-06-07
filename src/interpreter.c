@@ -15,6 +15,7 @@ static Value evaluateLiteral(Expr *expr);
 static Value evaluateGrouping(Interpreter *interpreter, Expr *expr);
 static Value evaluateVariable(Interpreter *interpreter, Expr *expr);
 static Value evaluateAssign(Interpreter *interpreter, Expr *expr);
+static Value evaluatePostfix(Interpreter *interpreter, Expr *expr);
 
 static void executeExpression(Interpreter *interpreter, Stmt *stmt);
 static void executeVar(Interpreter *interpreter, Stmt *stmt);
@@ -152,6 +153,8 @@ Value evaluate(Interpreter *interpreter, Expr *expr)
 		return evaluateAssign(interpreter, expr);
 	case EXPR_CALL:
 		return evaluateCall(interpreter, expr);
+	case EXPR_POSTFIX:
+        return evaluatePostfix(interpreter, expr);
 	}
 
 	return createNull();
@@ -532,6 +535,57 @@ static Value evaluateAssign(Interpreter *interpreter, Expr *expr)
 
 	// 赋值表达式的值是被赋的值
 	return value;
+}
+
+Value evaluatePostfix(Interpreter *interpreter, Expr *expr)
+{
+    // 确保操作数是变量
+    if (expr->as.postfix.operand->type != EXPR_VARIABLE)
+    {
+        runtimeError(interpreter, "后缀运算符只能应用于变量。");
+        return createNull();
+    }
+
+    // 获取变量的当前值
+    Token varName = expr->as.postfix.operand->as.variable.name;
+    Value oldValue = getVariable(interpreter->environment, varName);
+    
+    if (interpreter->hadError)
+    {
+        return createNull();
+    }
+
+    // 检查变量类型
+    if (oldValue.type != VAL_NUMBER)
+    {
+        freeValue(oldValue);
+        runtimeError(interpreter, "后缀运算符只能应用于数字类型。");
+        return createNull();
+    }
+
+    // 计算新值
+    Value newValue;
+    if (expr->as.postfix.op == TOKEN_PLUS_PLUS)
+    {
+        newValue = createNumber(oldValue.as.number + 1);
+    }
+    else if (expr->as.postfix.op == TOKEN_MINUS_MINUS)
+    {
+        newValue = createNumber(oldValue.as.number - 1);
+    }
+    else
+    {
+        freeValue(oldValue);
+        runtimeError(interpreter, "未知的后缀运算符。");
+        return createNull();
+    }
+
+    // 更新变量值
+    assignVariable(interpreter->environment, varName, newValue);
+    freeValue(newValue);
+
+    // 后缀运算符返回原来的值
+    return oldValue;
 }
 
 // 实现条件语句执行

@@ -70,6 +70,15 @@ Expr *createCallExpr(Expr *callee, Token paren, Expr **arguments, int argCount)
     return expr;
 }
 
+Expr *createPostfixExpr(Expr *operand, TokenType op)
+{
+    Expr *expr = (Expr *)malloc(sizeof(Expr));
+    expr->type = EXPR_POSTFIX;
+    expr->as.postfix.operand = operand;
+    expr->as.postfix.op = op;
+    return expr;
+}
+
 // 创建多变量声明
 Stmt *createMultiVarStmt(Token *names, int count, Token type, Expr *initializer)
 {
@@ -367,6 +376,12 @@ Expr *copyExpr(Expr *expr)
         return createCallExpr(calleeCopy, parenCopy, argsCopy, expr->as.call.argCount);
     }
 
+    case EXPR_POSTFIX:
+    {
+        Expr *operandCopy = copyExpr(expr->as.postfix.operand);
+        return createPostfixExpr(operandCopy, expr->as.postfix.op);
+    }
+
     default:
         fprintf(stderr, "未知的表达式类型\n");
         return NULL;
@@ -400,6 +415,9 @@ void freeExpr(Expr *expr)
             freeExpr(expr->as.call.arguments[i]);
         }
         free(expr->as.call.arguments);
+        break;
+    case EXPR_POSTFIX:
+        freeExpr(expr->as.postfix.operand);
         break;
     case EXPR_LITERAL:
     case EXPR_VARIABLE:
