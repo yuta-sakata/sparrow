@@ -167,8 +167,9 @@ typedef struct
 {
     Token name;
     Token *params;
-    TypeAnnotation *paramTypes; // 修改为 TypeAnnotation*
-    TypeAnnotation returnType;  // 修改为 TypeAnnotation
+    bool *paramHasVar;
+    TypeAnnotation *paramTypes; 
+    TypeAnnotation returnType; 
     int paramCount;
     struct Stmt *body;
 } FunctionStmt;
@@ -217,7 +218,7 @@ Stmt *createBlockStmt(Stmt **statements, int count);
 Stmt *createIfStmt(Expr *condition, Stmt *thenBranch, Stmt *elseBranch);
 Stmt *createWhileStmt(Expr *condition, Stmt *body);
 Stmt *createForStmt(Stmt *initializer, Expr *condition, Expr *increment, Stmt *body);
-Stmt *createFunctionStmt(Token name, Token *params, Token *paramTypes, int paramCount, Token returnType, Stmt *body);
+Stmt *createFunctionStmt(Token name, Token *params, bool *paramHasVar, Token *paramTypes,int paramCount, Token returnTypeToken, Stmt *body);
 Stmt *createReturnStmt(Token keyword, Expr *value);
 
 // 释放AST节点内存

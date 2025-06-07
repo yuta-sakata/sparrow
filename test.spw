@@ -1,8 +1,10 @@
 function main():void {
-	var a,b,c:int=10;
-	var see_hello:string="Hello,world!";
-	print(see_hello);
-	print(a);
-	print(b);
-	print(c);
+	print("Hello,World");
+	print(add(10,10));
+	for(var i:int=0;i<3;i++){
+		print(i);
+	}
+}
+function add(var a:int,b:int):int{
+	return a+b;
 }

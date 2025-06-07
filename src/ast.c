@@ -165,13 +165,14 @@ Stmt *createForStmt(Stmt *initializer, Expr *condition, Expr *increment, Stmt *b
 }
 
 // 创建函数声明
-Stmt *createFunctionStmt(Token name, Token *params, Token *paramTypes,
+Stmt *createFunctionStmt(Token name, Token *params, bool *paramHasVar, Token *paramTypes,
                          int paramCount, Token returnTypeToken, Stmt *body)
 {
     Stmt *stmt = (Stmt *)malloc(sizeof(Stmt));
     stmt->type = STMT_FUNCTION;
     stmt->as.function.name = name;
     stmt->as.function.params = params;
+    stmt->as.function.paramHasVar = paramHasVar;
     stmt->as.function.paramCount = paramCount;
 
     // 分配并转换参数类型
@@ -487,9 +488,18 @@ void freeStmt(Stmt *stmt)
         freeStmt(stmt->as.forLoop.body);
         break;
     case STMT_FUNCTION:
-        freeStmt(stmt->as.function.body);
-        free(stmt->as.function.params);
-        free(stmt->as.function.paramTypes);
+        if (stmt->as.function.params) {
+                free(stmt->as.function.params);
+            }
+            if (stmt->as.function.paramHasVar) {
+                free(stmt->as.function.paramHasVar);
+            }
+            if (stmt->as.function.paramTypes) {
+                free(stmt->as.function.paramTypes);
+            }
+            if (stmt->as.function.body) {
+                freeStmt(stmt->as.function.body);
+            }
         break;
     case STMT_RETURN:
         if (stmt->as.returnStmt.value)

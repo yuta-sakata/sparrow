@@ -237,6 +237,7 @@ static Stmt *functionDeclaration(Parser *parser)
     // 参数列表
     Token *parameters = NULL;
     Token *paramTypes = NULL;
+    bool *paramHasVarFlags = NULL;
     int paramCount = 0;
     int paramCapacity = 0;
 
@@ -247,13 +248,50 @@ static Stmt *functionDeclaration(Parser *parser)
             if (paramCount >= 255)
             {
                 error(parser, "Cannot have more than 255 parameters.");
+                if (parameters)
+                    free(parameters);
+                if (paramTypes)
+                    free(paramTypes);
+                if (paramHasVarFlags)
+                    free(paramHasVarFlags);
                 return NULL;
+            }
+
+            bool hasVar = false;
+            if (match(parser, TOKEN_VAR))
+            {
+                hasVar = true;
+            }
+            else if (paramCount == 0)
+            {
+                // 第一个参数必须有 var 关键字
+                error(parser, "First function parameter must be declared with 'var' keyword.");
+                if (parameters)
+                    free(parameters);
+                if (paramTypes)
+                    free(paramTypes);
+                if (paramHasVarFlags)
+                    free(paramHasVarFlags);
+                return NULL;
+            }
+            else
+            {
+                // 后续参数默认继承第一个参数的 var 状态
+                hasVar = true;
             }
 
             // 参数名
             Token param = consume(parser, TOKEN_IDENTIFIER, "Expect parameter name.");
             if (parser->hadError)
+            {
+                if (parameters)
+                    free(parameters);
+                if (paramTypes)
+                    free(paramTypes);
+                if (paramHasVarFlags)
+                    free(paramHasVarFlags);
                 return NULL;
+            }
 
             // 参数类型
             Token paramType = {0};
@@ -281,20 +319,29 @@ static Stmt *functionDeclaration(Parser *parser)
                 else
                 {
                     error(parser, "Expected parameter type after ':'.");
+                    if (parameters)
+                        free(parameters);
+                    if (paramTypes)
+                        free(paramTypes);
+                    if (paramHasVarFlags)
+                        free(paramHasVarFlags);
                     return NULL;
                 }
             }
 
-            // 添加参数
+            // 扩展数组容量
             if (paramCount >= paramCapacity)
             {
                 paramCapacity = paramCapacity == 0 ? 8 : paramCapacity * 2;
                 parameters = (Token *)realloc(parameters, paramCapacity * sizeof(Token));
                 paramTypes = (Token *)realloc(paramTypes, paramCapacity * sizeof(Token));
+                paramHasVarFlags = (bool *)realloc(paramHasVarFlags, paramCapacity * sizeof(bool));
             }
 
+            // 添加参数信息
             parameters[paramCount] = param;
             paramTypes[paramCount] = paramType;
+            paramHasVarFlags[paramCount] = hasVar;
             paramCount++;
 
         } while (match(parser, TOKEN_COMMA));
@@ -302,7 +349,15 @@ static Stmt *functionDeclaration(Parser *parser)
 
     consume(parser, TOKEN_RPAREN, "Expect ')' after parameters.");
     if (parser->hadError)
+    {
+        if (parameters)
+            free(parameters);
+        if (paramTypes)
+            free(paramTypes);
+        if (paramHasVarFlags)
+            free(paramHasVarFlags);
         return NULL;
+    }
 
     // 检查是否有返回类型注解（冒号后跟类型）
     Token returnType = {0};
@@ -334,6 +389,12 @@ static Stmt *functionDeclaration(Parser *parser)
         else
         {
             error(parser, "Expected return type after ':'.");
+            if (parameters)
+                free(parameters);
+            if (paramTypes)
+                free(paramTypes);
+            if (paramHasVarFlags)
+                free(paramHasVarFlags);
             return NULL;
         }
     }
@@ -341,13 +402,29 @@ static Stmt *functionDeclaration(Parser *parser)
     // 函数体
     consume(parser, TOKEN_LBRACE, "Expect '{' before function body.");
     if (parser->hadError)
+    {
+        if (parameters)
+            free(parameters);
+        if (paramTypes)
+            free(paramTypes);
+        if (paramHasVarFlags)
+            free(paramHasVarFlags);
         return NULL;
+    }
 
     Stmt *body = blockStatement(parser);
     if (parser->hadError)
+    {
+        if (parameters)
+            free(parameters);
+        if (paramTypes)
+            free(paramTypes);
+        if (paramHasVarFlags)
+            free(paramHasVarFlags);
         return NULL;
+    }
 
-    return createFunctionStmt(name, parameters, paramTypes, paramCount, returnType, body);
+    return createFunctionStmt(name, parameters, paramHasVarFlags, paramTypes, paramCount, returnType, body);
 }
 
 // 解析变量声明
