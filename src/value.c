@@ -39,31 +39,29 @@ Value createString(const char *value)
     // 处理NULL输入
     if (value == NULL)
     {
-        printf("WARNING: NULL string passed to createString\n");
         val.as.string = malloc(1);
         if (val.as.string == NULL)
         {
-            printf("ERROR: Failed to allocate memory for empty string\n");
             val.type = VAL_NULL;
             return val;
         }
-        val.as.string[0] = '\0'; // 设置为空字符串
+        val.as.string[0] = '\0';
         return val;
     }
 
     // 计算字符串长度并检查有效性
     size_t len = strlen(value);
 
-    val.as.string = (char *)malloc(len + 1); // +1 用于 null 终止符
+    val.as.string = (char *)malloc(len + 1);
     if (val.as.string == NULL)
     {
         val.type = VAL_NULL;
         return val;
     }
 
-    // 手动复制字符串
-    memcpy(val.as.string, value, len);
-    val.as.string[len] = '\0'; // 确保正确终止字符串
+    // 修复：使用安全的字符串复制
+    strncpy(val.as.string, value, len);
+    val.as.string[len] = '\0';
 
     return val;
 }
@@ -123,7 +121,15 @@ void printValue(Value value)
         printf(value.as.boolean ? "true" : "false");
         break;
     case VAL_NUMBER:
-        printf("%g", value.as.number);
+        // 检查是否为整数
+        if (value.as.number == (int)value.as.number)
+        {
+            printf("%d", (int)value.as.number);
+        }
+        else
+        {
+            printf("%g", value.as.number);
+        }
         break;
     case VAL_STRING:
         if (value.as.string != NULL)
@@ -132,23 +138,58 @@ void printValue(Value value)
         }
         else
         {
-            printf("\"<null>\"");
+            printf("(null string)");
         }
         break;
     case VAL_FUNCTION:
-        printf("<function %s>", value.as.function->name);
+        if (value.as.function != NULL && value.as.function->name != NULL)
+        {
+            printf("[Function: %s]", value.as.function->name);
+        }
+        else
+        {
+            printf("[Function: anonymous]");
+        }
         break;
     case VAL_NATIVE_FUNCTION:
-        printf("<native function %s>", value.as.nativeFunction->name);
+        if (value.as.nativeFunction != NULL && value.as.nativeFunction->name != NULL)
+        {
+            printf("[Native Function: %s]", value.as.nativeFunction->name);
+        }
+        else
+        {
+            printf("[Native Function: anonymous]");
+        }
         break;
     case VAL_ARRAY:
+        if (value.as.array == NULL)
+        {
+            printf("[]");
+            break;
+        }
+
         printf("[");
         for (int i = 0; i < value.as.array->count; i++)
         {
-            if (i > 0) printf(", ");
-            printValue(value.as.array->elements[i]);
+            // 递归调用前添加安全检查
+            if (i < value.as.array->capacity && value.as.array->elements != NULL)
+            {
+                printValue(value.as.array->elements[i]);
+            }
+            else
+            {
+                printf("(invalid element)");
+            }
+
+            if (i < value.as.array->count - 1)
+            {
+                printf(", ");
+            }
         }
         printf("]");
+        break;
+    default:
+        printf("(unknown value type)");
         break;
     }
 }
@@ -329,26 +370,29 @@ Value copyValue(Value value)
         return newValue;
     }
     case VAL_ARRAY:
-    {
         if (value.as.array == NULL)
         {
             return createNull();
         }
-        
-        Value newArrayValue = createArray(value.as.array->elementType, value.as.array->capacity);
+
+        // 创建新的数组副本
+        Array *originalArray = value.as.array;
+        Value newArrayValue = createArray(originalArray->elementType, originalArray->capacity);
+
         if (newArrayValue.type == VAL_NULL)
         {
             return createNull();
         }
-        
+
         // 复制所有元素
-        for (int i = 0; i < value.as.array->count; i++)
+        Array *newArray = newArrayValue.as.array;
+        for (int i = 0; i < originalArray->count; i++)
         {
-            arrayPush(newArrayValue.as.array, value.as.array->elements[i]);
+            newArray->elements[i] = copyValue(originalArray->elements[i]);
+            newArray->count++;
         }
-        
+
         return newArrayValue;
-    }
     default:
         // 对于简单值类型，直接复制
         return value;
@@ -427,32 +471,31 @@ void freeValue(Value value)
     }
 }
 
-
 // 创建数组值
 Value createArray(BaseType elementType, int initialCapacity)
 {
     Value val;
     val.type = VAL_ARRAY;
-    
+
     Array *array = (Array *)malloc(sizeof(Array));
     if (array == NULL)
     {
         val.type = VAL_NULL;
         return val;
     }
-    
+
     array->capacity = initialCapacity > 0 ? initialCapacity : 8;
     array->count = 0;
     array->elementType = elementType;
     array->elements = (Value *)malloc(sizeof(Value) * array->capacity);
-    
+
     if (array->elements == NULL)
     {
         free(array);
         val.type = VAL_NULL;
         return val;
     }
-    
+
     val.as.array = array;
     return val;
 }
@@ -460,15 +503,29 @@ Value createArray(BaseType elementType, int initialCapacity)
 // 数组操作函数
 void arrayPush(Array *array, Value value)
 {
-    if (array == NULL) return;
-    
+    if (array == NULL)
+    {
+        printf("ERROR: NULL array passed to arrayPush\n");
+        return;
+    }
+
     if (array->count >= array->capacity)
     {
-        array->capacity *= 2;
-        array->elements = (Value *)realloc(array->elements, sizeof(Value) * array->capacity);
+        int newCapacity = array->capacity == 0 ? 8 : array->capacity * 2;
+        Value *newElements = (Value *)realloc(array->elements, sizeof(Value) * newCapacity);
+
+        if (newElements == NULL)
+        {
+            printf("ERROR: Failed to reallocate memory for array\n");
+            return;
+        }
+
+        array->elements = newElements;
+        array->capacity = newCapacity;
     }
-    
-    array->elements[array->count++] = copyValue(value);
+
+    array->elements[array->count] = value;
+    array->count++;
 }
 
 Value arrayGet(Array *array, int index)
@@ -477,38 +534,45 @@ Value arrayGet(Array *array, int index)
     {
         return createNull();
     }
-    
+
     return copyValue(array->elements[index]);
 }
 
 void arraySet(Array *array, int index, Value value)
 {
-    if (array == NULL || index < 0) return;
-    
+    if (array == NULL || index < 0)
+        return;
+
     // 如果索引超出当前范围，扩展数组
     if (index >= array->capacity)
     {
         int newCapacity = index + 1;
         if (newCapacity < array->capacity * 2)
             newCapacity = array->capacity * 2;
-        
+
         array->elements = (Value *)realloc(array->elements, sizeof(Value) * newCapacity);
+        if (array->elements == NULL)
+        {
+            printf("ERROR: Failed to reallocate array memory\n");
+            return;
+        }
         array->capacity = newCapacity;
     }
-    
+
     // 填充中间的空位
     while (array->count <= index)
     {
         array->elements[array->count++] = createNull();
     }
-    
-    // 释放旧值并设置新值
+
+    // 修复：释放旧值并设置新值
     if (index < array->count)
     {
         freeValue(array->elements[index]);
     }
-    
+
     array->elements[index] = copyValue(value);
+
     if (index >= array->count)
     {
         array->count = index + 1;

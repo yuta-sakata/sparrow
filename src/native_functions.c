@@ -207,7 +207,6 @@ Value lengthNative(int argCount, Value *args)
 // 实现数组push原生函数
 Value pushNative(int argCount, Value *args)
 {
-    // 参数验证
     if (argCount != 2)
     {
         return createString("Error: push() requires exactly two arguments (array, element)");
@@ -229,17 +228,36 @@ Value pushNative(int argCount, Value *args)
         return createString("Error: NULL array passed to push()");
     }
 
-    // 向数组添加元素
-    arrayPush(args[0].as.array, args[1]);
+    // 修复：直接操作传入的数组，不创建副本
+    Array *array = args[0].as.array;
+
+    // 确保数组有足够容量
+    if (array->count >= array->capacity)
+    {
+        int newCapacity = array->capacity * 2;
+        if (newCapacity < 8)
+            newCapacity = 8;
+
+        array->elements = (Value *)realloc(array->elements, sizeof(Value) * newCapacity);
+        if (array->elements == NULL)
+        {
+            return createString("Error: failed to expand array");
+        }
+        array->capacity = newCapacity;
+    }
+
+    // 创建元素的副本并添加到数组
+    Value elementCopy = copyValue(args[1]);
+    array->elements[array->count] = elementCopy;
+    array->count++;
 
     // 返回新的数组长度
-    return createNumber((double)args[0].as.array->count);
+    return createNumber((double)array->count);
 }
 
 // 实现数组pop原生函数
 Value popNative(int argCount, Value *args)
 {
-    // 参数验证
     if (argCount != 1)
     {
         return createString("Error: pop() requires exactly one argument");
@@ -250,7 +268,6 @@ Value popNative(int argCount, Value *args)
         return createString("Error: NULL arguments passed to pop()");
     }
 
-    // 检查参数是否为数组
     if (args[0].type != VAL_ARRAY)
     {
         return createString("Error: pop() can only be called on arrays");
@@ -263,20 +280,16 @@ Value popNative(int argCount, Value *args)
 
     Array *array = args[0].as.array;
 
-    // 检查数组是否为空
     if (array->count == 0)
     {
-        return createNull(); // 空数组返回null
+        return createNull();
     }
 
-    // 获取最后一个元素
-    Value lastElement = copyValue(array->elements[array->count - 1]);
-
-    // 释放原来的元素并减少计数
-    freeValue(array->elements[array->count - 1]);
+    Value lastElement = array->elements[array->count - 1];
     array->count--;
 
-    return lastElement;
+    // 返回弹出的元素（创建副本）
+    return copyValue(lastElement);
 }
 
 // 实现数组切片原生函数

@@ -315,3 +315,27 @@ void freeEnvironment(Environment *env)
     env->capacity = 0;
     env->enclosing = NULL;
 }
+
+// 获取变量的引用（用于数组赋值）
+Value *getVariableRef(Environment *env, const char *name)
+{
+    if (env == NULL || name == NULL)
+        return NULL;
+
+    // 在当前环境中查找
+    for (int i = 0; i < env->count; i++)
+    {
+        if (env->names[i] != NULL && strcmp(env->names[i], name) == 0)
+        {
+            return &env->values[i]; // 返回引用
+        }
+    }
+
+    // 在外层环境中查找
+    if (env->enclosing != NULL)
+    {
+        return getVariableRef(env->enclosing, name);
+    }
+
+    return NULL; // 未找到
+}

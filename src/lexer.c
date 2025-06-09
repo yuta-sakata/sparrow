@@ -12,7 +12,7 @@ typedef struct
 static Keyword keywords[] = {
     {"if", 2, TOKEN_IF},
     {"else", 4, TOKEN_ELSE},
-    {"in", 2,TOKEN_IN},
+    {"in", 2, TOKEN_IN},
     {"while", 5, TOKEN_WHILE},
     {"for", 3, TOKEN_FOR},
     {"return", 6, TOKEN_RETURN},
@@ -318,32 +318,129 @@ static Token string(Lexer *lexer)
     // 跳过开始的引号
     advance(lexer);
 
-    const char *start = lexer->current;
+    // 临时缓冲区用于存储处理转义字符后的字符串
+    char *buffer = malloc(256); // 初始大小
+    if (buffer == NULL)
+    {
+        return errorToken(lexer, "Memory allocation failed.");
+    }
+
+    int bufferSize = 256;
+    int bufferPos = 0;
 
     while (peek(lexer) != '"' && !isAtEnd(lexer))
     {
-        if (peek(lexer) == '\n')
-            lexer->line++;
-        advance(lexer);
+        char c = peek(lexer);
+
+        if (c == '\\')
+        {
+            // 处理转义字符
+            advance(lexer); // 跳过反斜杠
+
+            if (isAtEnd(lexer))
+            {
+                free(buffer);
+                return errorToken(lexer, "Unterminated string escape sequence.");
+            }
+
+            char escaped = advance(lexer);
+            char actualChar;
+
+            switch (escaped)
+            {
+            case 'n':
+                actualChar = '\n';
+                break;
+            case 't':
+                actualChar = '\t';
+                break;
+            case 'r':
+                actualChar = '\r';
+                break;
+            case '\\':
+                actualChar = '\\';
+                break;
+            case '"':
+                actualChar = '"';
+                break;
+            case '0':
+                actualChar = '\0';
+                break;
+            case 'b':
+                actualChar = '\b'; // 退格符
+                break;
+            case 'f':
+                actualChar = '\f'; // 换页符
+                break;
+            case 'v':
+                actualChar = '\v'; // 垂直制表符
+                break;
+            case 'a':
+                actualChar = '\a'; // 响铃符
+                break;
+            case '/':
+                actualChar = '/'; // 斜杠
+                break;
+            default:
+                // 未知转义序列，保持原样 - 这里可以选择报错或者保持原字符
+                // 为了兼容性，我们保持原字符
+                actualChar = escaped;
+                break;
+            }
+
+            // 确保缓冲区足够大
+            if (bufferPos >= bufferSize - 1)
+            {
+                bufferSize *= 2;
+                char *newBuffer = realloc(buffer, bufferSize);
+                if (newBuffer == NULL)
+                {
+                    free(buffer);
+                    return errorToken(lexer, "Memory allocation failed.");
+                }
+                buffer = newBuffer;
+            }
+
+            buffer[bufferPos++] = actualChar;
+        }
+        else
+        {
+            // 普通字符
+            if (c == '\n')
+                lexer->line++;
+
+            // 确保缓冲区足够大
+            if (bufferPos >= bufferSize - 1)
+            {
+                bufferSize *= 2;
+                char *newBuffer = realloc(buffer, bufferSize);
+                if (newBuffer == NULL)
+                {
+                    free(buffer);
+                    return errorToken(lexer, "Memory allocation failed.");
+                }
+                buffer = newBuffer;
+            }
+
+            buffer[bufferPos++] = c;
+            advance(lexer);
+        }
     }
 
     if (isAtEnd(lexer))
     {
+        free(buffer);
         return errorToken(lexer, "Unterminated string.");
     }
-
-    // 计算字符串内容长度
-    int length = lexer->current - start;
 
     // 跳过结束的引号
     advance(lexer);
 
-    Token token = makeToken(lexer, TOKEN_STRING);
+    // 添加字符串结束符
+    buffer[bufferPos] = '\0';
 
-    // 为字符串内容分配内存
-    token.value.stringValue = (char *)malloc(length + 1);
-    strncpy(token.value.stringValue, start, length);
-    token.value.stringValue[length] = '\0';
+    Token token = makeToken(lexer, TOKEN_STRING);
+    token.value.stringValue = buffer; // 直接使用处理后的缓冲区
 
     return token;
 }

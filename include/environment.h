@@ -30,4 +30,7 @@ void assignVariable(Environment* env, Token name, Value value);
 // 释放环境
 void freeEnvironment(Environment* env);
 
+// 查找变量的索引
+Value *getVariableRef(Environment *env, const char *name);
+
 #endif // SPARROW_ENVIRONMENT_H
