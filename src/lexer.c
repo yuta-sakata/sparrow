@@ -216,18 +216,7 @@ static Token makeToken(Lexer *lexer, TokenType type)
     // 保存行号信息
     token.line = lexer->line;
 
-    // 去除词素开头的空白字符
-    char *trimmed = token.lexeme;
-    while (isspace(*trimmed))
-        trimmed++;
-
-    if (trimmed != token.lexeme)
-    {
-        // 如果开头有空白，移动字符串
-        memmove(token.lexeme, trimmed, strlen(trimmed) + 1);
-    }
-
-    // 重置源指针为当前位置 (只做一次)
+    // 重置源指针为当前位置
     lexer->source = lexer->current;
 
     return token;
@@ -362,6 +351,8 @@ static Token string(Lexer *lexer)
 Token nextToken(Lexer *lexer)
 {
     skipWhitespaceAndComments(lexer);
+
+    lexer->source = lexer->current;
 
     if (isAtEnd(lexer))
     {

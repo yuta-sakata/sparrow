@@ -16,6 +16,7 @@ static Value evaluateGrouping(Interpreter *interpreter, Expr *expr);
 static Value evaluateVariable(Interpreter *interpreter, Expr *expr);
 static Value evaluateAssign(Interpreter *interpreter, Expr *expr);
 static Value evaluatePostfix(Interpreter *interpreter, Expr *expr);
+static Value evaluatePrefix(Interpreter *interpreter, Expr *expr);
 
 static void executeExpression(Interpreter *interpreter, Stmt *stmt);
 static void executeVar(Interpreter *interpreter, Stmt *stmt);
@@ -155,6 +156,8 @@ Value evaluate(Interpreter *interpreter, Expr *expr)
 		return evaluateCall(interpreter, expr);
 	case EXPR_POSTFIX:
 		return evaluatePostfix(interpreter, expr);
+	case EXPR_PREFIX:
+		return evaluatePrefix(interpreter, expr);
 	}
 
 	return createNull();
@@ -502,7 +505,51 @@ static Value evaluateBinary(Interpreter *interpreter, Expr *expr)
 		freeValue(right);
 		return createBool(result);
 	}
+	case TOKEN_AND: // 逻辑与运算符 (&&)
+	{
+		// 短路求值：如果左操作数为假，直接返回false
+		if (left.type == VAL_BOOL && !left.as.boolean)
+		{
+			freeValue(left);
+			freeValue(right);
+			return createBool(false);
 		}
+		else if (left.type == VAL_NULL)
+		{
+			freeValue(left);
+			freeValue(right);
+			return createBool(false);
+		}
+
+		// 左操作数为真，返回右操作数的真值
+		bool result = (right.type != VAL_NULL) &&
+					  !(right.type == VAL_BOOL && !right.as.boolean);
+		freeValue(left);
+		freeValue(right);
+		return createBool(result);
+	}
+
+	case TOKEN_OR: // 逻辑或运算符 (||)
+	{
+		// 短路求值：如果左操作数为真，直接返回true
+		bool leftTruthy = (left.type != VAL_NULL) &&
+						  !(left.type == VAL_BOOL && !left.as.boolean);
+
+		if (leftTruthy)
+		{
+			freeValue(left);
+			freeValue(right);
+			return createBool(true);
+		}
+
+		// 左操作数为假，返回右操作数的真值
+		bool result = (right.type != VAL_NULL) &&
+					  !(right.type == VAL_BOOL && !right.as.boolean);
+		freeValue(left);
+		freeValue(right);
+		return createBool(result);
+	}
+	}
 
 	freeValue(left);
 	freeValue(right);
@@ -643,6 +690,49 @@ Value evaluatePostfix(Interpreter *interpreter, Expr *expr)
 
 	// 后缀运算符返回原来的值
 	return oldValue;
+}
+
+Value evaluatePrefix(Interpreter *interpreter, Expr *expr)
+{
+	Token varName = expr->as.prefix.operand->as.variable.name;
+	Value oldValue = getVariable(interpreter->environment, varName);
+
+	if (interpreter->hadError)
+	{
+		return createNull();
+	}
+
+	// 检查变量类型
+	if (oldValue.type != VAL_NUMBER)
+	{
+		freeValue(oldValue);
+		runtimeError(interpreter, "前缀运算符只能应用于数字类型。");
+		return createNull();
+	}
+
+	// 计算新值
+	Value newValue;
+	if (expr->as.prefix.op == TOKEN_PLUS_PLUS)
+	{
+		newValue = createNumber(oldValue.as.number + 1);
+	}
+	else if (expr->as.prefix.op == TOKEN_MINUS_MINUS)
+	{
+		newValue = createNumber(oldValue.as.number - 1);
+	}
+	else
+	{
+		freeValue(oldValue);
+		runtimeError(interpreter, "未知的前缀运算符。");
+		return createNull();
+	}
+
+	// 更新变量值
+	assignVariable(interpreter->environment, varName, newValue);
+
+	// 前缀运算符返回新值
+	freeValue(oldValue);
+	return newValue;
 }
 
 // 实现条件语句执行

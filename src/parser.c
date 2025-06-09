@@ -14,6 +14,8 @@ static Expr *unary(Parser *parser);
 static Expr *call(Parser *parser);
 static Expr *primary(Parser *parser);
 static Expr *finishCall(Parser *parser, Expr *callee);
+static Expr *logicalOr(Parser *parser);
+static Expr *logicalAnd(Parser *parser);
 
 static Stmt *declaration(Parser *parser);
 static Stmt *functionDeclaration(Parser *parser);
@@ -717,11 +719,10 @@ static Expr *expression(Parser *parser)
 // 解析赋值表达式
 static Expr *assignment(Parser *parser)
 {
-    Expr *expr = equality(parser);
+    Expr *expr = logicalOr(parser);
 
     if (match(parser, TOKEN_ASSIGN))
     {
-        Token equals = previous(parser);
         Expr *value = assignment(parser);
 
         if (expr->type == EXPR_VARIABLE)
@@ -809,6 +810,32 @@ static Expr *unary(Parser *parser)
         return createUnaryExpr(operator, right);
     }
 
+    if (match(parser, TOKEN_NOT))
+    {
+        TokenType operator = previous(parser).type;
+        Expr *right = unary(parser);
+        return createUnaryExpr(operator, right);
+    }
+
+    // 添加前缀递增/递减运算符支持
+    if (match(parser, TOKEN_PLUS_PLUS) || match(parser, TOKEN_MINUS_MINUS))
+    {
+        TokenType operator = previous(parser).type;
+        Expr *right = call(parser);
+
+        // 检查右操作数是否是变量
+        if (right == NULL || right->type != EXPR_VARIABLE)
+        {
+            error(parser, "Prefix operators can only be applied to variables.");
+            if (right)
+                freeExpr(right);
+            return NULL;
+        }
+
+        // 创建前缀表达式（可以复用后缀表达式结构，但需要标记为前缀）
+        return createPrefixExpr(right, operator);
+    }
+
     return call(parser);
 }
 
@@ -836,6 +863,11 @@ static Expr *call(Parser *parser)
             }
 
             expr = createPostfixExpr(expr, op);
+            // 检查 createPostfixExpr 是否返回 NULL
+            if (expr == NULL)
+            {
+                return NULL;
+            }
         }
         else
         {
@@ -890,6 +922,34 @@ static Expr *finishCall(Parser *parser, Expr *callee)
     }
 
     return createCallExpr(callee, paren, arguments, argCount);
+}
+
+Expr *logicalOr(Parser *parser)
+{
+    Expr *expr = logicalAnd(parser);
+
+    while (match(parser, TOKEN_OR))
+    {
+        TokenType operator = previous(parser).type;
+        Expr *right = logicalAnd(parser);
+        expr = createBinaryExpr(expr, operator, right);
+    }
+
+    return expr;
+}
+
+Expr *logicalAnd(Parser *parser)
+{
+    Expr *expr = equality(parser);
+
+    while (match(parser, TOKEN_AND))
+    {
+        TokenType operator = previous(parser).type;
+        Expr *right = equality(parser);
+        expr = createBinaryExpr(expr, operator, right);
+    }
+
+    return expr;
 }
 
 // 解析基本表达式

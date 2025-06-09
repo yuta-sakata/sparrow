@@ -14,7 +14,8 @@ typedef enum
 {
     EXPR_BINARY,   // 二元表达式
     EXPR_UNARY,    // 一元表达式
-    EXPR_POSTFIX,    // 后缀表达式
+    EXPR_POSTFIX,  // 后缀表达式
+    EXPR_PREFIX,   // 前缀表达式
     EXPR_LITERAL,  // 字面量
     EXPR_GROUPING, // 分组表达式
     EXPR_VARIABLE, // 变量引用
@@ -37,7 +38,8 @@ typedef enum
 } StmtType;
 
 // 多变量声明语句结构
-typedef struct {
+typedef struct
+{
     Token *names;      // 变量名数组
     int count;         // 变量数量
     Token type;        // 共享的类型
@@ -62,9 +64,16 @@ typedef struct
 // 后缀表达式
 typedef struct
 {
-    Expr *operand;  // 被操作的变量
-    TokenType op;   // 运算符 (++ 或 --)
+    Expr *operand; // 被操作的变量
+    TokenType op;  // 运算符 (++ 或 --)
 } PostfixExpr;
+
+// 前缀表达式
+typedef struct
+{
+    Expr *operand;
+    TokenType op;
+} PrefixExpr;
 
 // 字面量表达式
 typedef struct
@@ -110,6 +119,7 @@ struct Expr
         UnaryExpr unary;
         LiteralExpr literal;
         PostfixExpr postfix;
+        PrefixExpr prefix;
         GroupingExpr grouping;
         VariableExpr variable;
         AssignExpr assign;
@@ -168,8 +178,8 @@ typedef struct
     Token name;
     Token *params;
     bool *paramHasVar;
-    TypeAnnotation *paramTypes; 
-    TypeAnnotation returnType; 
+    TypeAnnotation *paramTypes;
+    TypeAnnotation returnType;
     int paramCount;
     struct Stmt *body;
 } FunctionStmt;
@@ -208,6 +218,7 @@ Expr *createVariableExpr(Token name);
 Expr *createAssignExpr(Token name, Expr *value);
 Expr *createCallExpr(Expr *callee, Token paren, Expr **arguments, int argCount);
 Expr *createPostfixExpr(Expr *operand, TokenType op);
+Expr *createPrefixExpr(Expr *operand, TokenType op);
 Expr *copyExpr(Expr *expr);
 
 // 创建语句节点的函数
@@ -218,7 +229,7 @@ Stmt *createBlockStmt(Stmt **statements, int count);
 Stmt *createIfStmt(Expr *condition, Stmt *thenBranch, Stmt *elseBranch);
 Stmt *createWhileStmt(Expr *condition, Stmt *body);
 Stmt *createForStmt(Stmt *initializer, Expr *condition, Expr *increment, Stmt *body);
-Stmt *createFunctionStmt(Token name, Token *params, bool *paramHasVar, Token *paramTypes,int paramCount, Token returnTypeToken, Stmt *body);
+Stmt *createFunctionStmt(Token name, Token *params, bool *paramHasVar, Token *paramTypes, int paramCount, Token returnTypeToken, Stmt *body);
 Stmt *createReturnStmt(Token keyword, Expr *value);
 
 // 释放AST节点内存

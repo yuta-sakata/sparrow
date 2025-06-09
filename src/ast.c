@@ -79,6 +79,19 @@ Expr *createPostfixExpr(Expr *operand, TokenType op)
     return expr;
 }
 
+Expr *createPrefixExpr(Expr *operand, TokenType op)
+{
+    Expr *expr = (Expr *)malloc(sizeof(Expr));
+    if (expr == NULL)
+    {
+        return NULL;
+    }
+    expr->type = EXPR_PREFIX;
+    expr->as.prefix.operand = operand;
+    expr->as.prefix.op = op;
+    return expr;
+}
+
 // 创建多变量声明
 Stmt *createMultiVarStmt(Token *names, int count, Token type, Expr *initializer)
 {
@@ -383,6 +396,11 @@ Expr *copyExpr(Expr *expr)
         return createPostfixExpr(operandCopy, expr->as.postfix.op);
     }
 
+    case EXPR_PREFIX:
+    {
+        Expr *operandCopy = copyExpr(expr->as.prefix.operand);
+        return createPrefixExpr(operandCopy, expr->as.prefix.op);
+    }
     default:
         fprintf(stderr, "未知的表达式类型\n");
         return NULL;
@@ -419,6 +437,9 @@ void freeExpr(Expr *expr)
         break;
     case EXPR_POSTFIX:
         freeExpr(expr->as.postfix.operand);
+        break;
+    case EXPR_PREFIX:
+        freeExpr(expr->as.prefix.operand);
         break;
     case EXPR_LITERAL:
     case EXPR_VARIABLE:
@@ -488,18 +509,22 @@ void freeStmt(Stmt *stmt)
         freeStmt(stmt->as.forLoop.body);
         break;
     case STMT_FUNCTION:
-        if (stmt->as.function.params) {
-                free(stmt->as.function.params);
-            }
-            if (stmt->as.function.paramHasVar) {
-                free(stmt->as.function.paramHasVar);
-            }
-            if (stmt->as.function.paramTypes) {
-                free(stmt->as.function.paramTypes);
-            }
-            if (stmt->as.function.body) {
-                freeStmt(stmt->as.function.body);
-            }
+        if (stmt->as.function.params)
+        {
+            free(stmt->as.function.params);
+        }
+        if (stmt->as.function.paramHasVar)
+        {
+            free(stmt->as.function.paramHasVar);
+        }
+        if (stmt->as.function.paramTypes)
+        {
+            free(stmt->as.function.paramTypes);
+        }
+        if (stmt->as.function.body)
+        {
+            freeStmt(stmt->as.function.body);
+        }
         break;
     case STMT_RETURN:
         if (stmt->as.returnStmt.value)
