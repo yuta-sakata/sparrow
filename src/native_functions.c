@@ -74,6 +74,12 @@ void registerAllNativeFunctions(Interpreter *interpreter)
     registerNativeFunction(interpreter, "clock", 0, clockNative);
     registerNativeFunction(interpreter, "type", 1, typeNative);
 
+    // 数组相关函数
+    registerNativeFunction(interpreter, "length", 1, lengthNative);
+    registerNativeFunction(interpreter, "push", 2, pushNative);
+    registerNativeFunction(interpreter, "pop", 1, popNative);
+    registerNativeFunction(interpreter, "slice", -1, sliceNative); // -1表示可变参数（2或3个）
+
     // 标记解释器支持 main 函数
     interpreter->hasMainFunction = false;
     interpreter->mainFunction = NULL;
@@ -150,6 +156,9 @@ Value typeNative(int argCount, Value *args)
     case VAL_NATIVE_FUNCTION:
         typeStr = "native function";
         break;
+    case VAL_ARRAY:
+        typeStr = "array";
+        break;
     default:
         typeStr = "unknown";
         break;
@@ -158,4 +167,197 @@ Value typeNative(int argCount, Value *args)
     return createString(typeStr);
 }
 
-// ... 其他原生函数实现 ...
+// 实现数组长度原生函数
+Value lengthNative(int argCount, Value *args)
+{
+    // 参数验证
+    if (argCount != 1)
+    {
+        return createString("Error: length() requires exactly one argument");
+    }
+
+    if (args == NULL)
+    {
+        return createString("Error: NULL arguments passed to length()");
+    }
+
+    // 检查参数类型
+    if (args[0].type == VAL_ARRAY)
+    {
+        if (args[0].as.array == NULL)
+        {
+            return createNumber(0);
+        }
+        return createNumber((double)args[0].as.array->count);
+    }
+    else if (args[0].type == VAL_STRING)
+    {
+        if (args[0].as.string == NULL)
+        {
+            return createNumber(0);
+        }
+        return createNumber((double)strlen(args[0].as.string));
+    }
+    else
+    {
+        return createString("Error: length() can only be called on arrays or strings");
+    }
+}
+
+// 实现数组push原生函数
+Value pushNative(int argCount, Value *args)
+{
+    // 参数验证
+    if (argCount != 2)
+    {
+        return createString("Error: push() requires exactly two arguments (array, element)");
+    }
+
+    if (args == NULL)
+    {
+        return createString("Error: NULL arguments passed to push()");
+    }
+
+    // 检查第一个参数是否为数组
+    if (args[0].type != VAL_ARRAY)
+    {
+        return createString("Error: first argument to push() must be an array");
+    }
+
+    if (args[0].as.array == NULL)
+    {
+        return createString("Error: NULL array passed to push()");
+    }
+
+    // 向数组添加元素
+    arrayPush(args[0].as.array, args[1]);
+
+    // 返回新的数组长度
+    return createNumber((double)args[0].as.array->count);
+}
+
+// 实现数组pop原生函数
+Value popNative(int argCount, Value *args)
+{
+    // 参数验证
+    if (argCount != 1)
+    {
+        return createString("Error: pop() requires exactly one argument");
+    }
+
+    if (args == NULL)
+    {
+        return createString("Error: NULL arguments passed to pop()");
+    }
+
+    // 检查参数是否为数组
+    if (args[0].type != VAL_ARRAY)
+    {
+        return createString("Error: pop() can only be called on arrays");
+    }
+
+    if (args[0].as.array == NULL)
+    {
+        return createString("Error: NULL array passed to pop()");
+    }
+
+    Array *array = args[0].as.array;
+
+    // 检查数组是否为空
+    if (array->count == 0)
+    {
+        return createNull(); // 空数组返回null
+    }
+
+    // 获取最后一个元素
+    Value lastElement = copyValue(array->elements[array->count - 1]);
+
+    // 释放原来的元素并减少计数
+    freeValue(array->elements[array->count - 1]);
+    array->count--;
+
+    return lastElement;
+}
+
+// 实现数组切片原生函数
+Value sliceNative(int argCount, Value *args)
+{
+    // 参数验证：slice(array, start) 或 slice(array, start, end)
+    if (argCount < 2 || argCount > 3)
+    {
+        return createString("Error: slice() requires 2 or 3 arguments (array, start, [end])");
+    }
+
+    if (args == NULL)
+    {
+        return createString("Error: NULL arguments passed to slice()");
+    }
+
+    // 检查第一个参数是否为数组
+    if (args[0].type != VAL_ARRAY)
+    {
+        return createString("Error: first argument to slice() must be an array");
+    }
+
+    if (args[0].as.array == NULL)
+    {
+        return createString("Error: NULL array passed to slice()");
+    }
+
+    // 检查start参数是否为数字
+    if (args[1].type != VAL_NUMBER)
+    {
+        return createString("Error: start index must be a number");
+    }
+
+    Array *sourceArray = args[0].as.array;
+    int start = (int)args[1].as.number;
+    int end = sourceArray->count; // 默认到数组末尾
+
+    // 如果提供了end参数
+    if (argCount == 3)
+    {
+        if (args[2].type != VAL_NUMBER)
+        {
+            return createString("Error: end index must be a number");
+        }
+        end = (int)args[2].as.number;
+    }
+
+    // 处理负数索引
+    if (start < 0)
+    {
+        start = sourceArray->count + start;
+    }
+    if (end < 0)
+    {
+        end = sourceArray->count + end;
+    }
+
+    // 边界检查
+    if (start < 0)
+        start = 0;
+    if (end > sourceArray->count)
+        end = sourceArray->count;
+    if (start >= end)
+    {
+        // 返回空数组
+        return createArray(sourceArray->elementType, 0);
+    }
+
+    // 创建新数组
+    int sliceLength = end - start;
+    Value newArray = createArray(sourceArray->elementType, sliceLength);
+    if (newArray.type == VAL_NULL)
+    {
+        return createString("Error: failed to create slice array");
+    }
+
+    // 复制元素到新数组
+    for (int i = start; i < end; i++)
+    {
+        arrayPush(newArray.as.array, sourceArray->elements[i]);
+    }
+
+    return newArray;
+}

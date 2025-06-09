@@ -93,7 +93,7 @@ Expr *createPrefixExpr(Expr *operand, TokenType op)
 }
 
 // 创建多变量声明
-Stmt *createMultiVarStmt(Token *names, int count, Token type, Expr *initializer)
+Stmt *createMultiVarStmt(Token *names, int count, TypeAnnotation type, Expr *initializer)
 {
     Stmt *stmt = (Stmt *)malloc(sizeof(Stmt));
     stmt->type = STMT_MULTI_VAR;
@@ -121,14 +121,12 @@ Stmt *createExpressionStmt(Expr *expression)
 }
 
 // 创建变量声明
-Stmt *createVarStmt(Token name, Token typeToken, Expr *initializer)
+Stmt *createVarStmt(Token name, TypeAnnotation type, Expr *initializer)
 {
     Stmt *stmt = (Stmt *)malloc(sizeof(Stmt));
     stmt->type = STMT_VAR;
     stmt->as.var.name = name;
-
-    // 将 Token 类型转换为 TypeAnnotation
-    stmt->as.var.type = tokenToTypeAnnotation(typeToken.type);
+    stmt->as.var.type = type;
 
     stmt->as.var.initializer = initializer;
     return stmt;
@@ -178,8 +176,7 @@ Stmt *createForStmt(Stmt *initializer, Expr *condition, Expr *increment, Stmt *b
 }
 
 // 创建函数声明
-Stmt *createFunctionStmt(Token name, Token *params, bool *paramHasVar, Token *paramTypes,
-                         int paramCount, Token returnTypeToken, Stmt *body)
+Stmt *createFunctionStmt(Token name, Token *params, bool *paramHasVar, TypeAnnotation *paramTypes, int paramCount, TypeAnnotation returnType, Stmt *body)
 {
     Stmt *stmt = (Stmt *)malloc(sizeof(Stmt));
     stmt->type = STMT_FUNCTION;
@@ -188,25 +185,24 @@ Stmt *createFunctionStmt(Token name, Token *params, bool *paramHasVar, Token *pa
     stmt->as.function.paramHasVar = paramHasVar;
     stmt->as.function.paramCount = paramCount;
 
-    // 分配并转换参数类型
+    // 分配并复制参数类型
     TypeAnnotation *convertedParamTypes = NULL;
     if (paramCount > 0)
     {
         convertedParamTypes = (TypeAnnotation *)malloc(paramCount * sizeof(TypeAnnotation));
         for (int i = 0; i < paramCount; i++)
         {
-            convertedParamTypes[i] = tokenToTypeAnnotation(paramTypes[i].type);
+            convertedParamTypes[i] = paramTypes[i];
         }
     }
     stmt->as.function.paramTypes = convertedParamTypes;
 
-    // 转换返回类型
-    stmt->as.function.returnType = tokenToTypeAnnotation(returnTypeToken.type);
+    // 直接使用返回类型，不需要转换
+    stmt->as.function.returnType = returnType;
 
     stmt->as.function.body = body;
     return stmt;
 }
-
 // 创建return语句
 Stmt *createReturnStmt(Token keyword, Expr *value)
 {
@@ -401,11 +397,109 @@ Expr *copyExpr(Expr *expr)
         Expr *operandCopy = copyExpr(expr->as.prefix.operand);
         return createPrefixExpr(operandCopy, expr->as.prefix.op);
     }
+
+    case EXPR_ARRAY_LITERAL:
+    {
+        Expr **elementsCopy = NULL;
+        if (expr->as.arrayLiteral.elementCount > 0)
+        {
+            elementsCopy = (Expr **)malloc(sizeof(Expr *) * expr->as.arrayLiteral.elementCount);
+            if (elementsCopy == NULL)
+            {
+                fprintf(stderr, "内存分配失败\n");
+                return NULL;
+            }
+            
+            for (int i = 0; i < expr->as.arrayLiteral.elementCount; i++)
+            {
+                elementsCopy[i] = copyExpr(expr->as.arrayLiteral.elements[i]);
+                if (elementsCopy[i] == NULL)
+                {
+                    // 清理已复制的元素
+                    for (int j = 0; j < i; j++)
+                        freeExpr(elementsCopy[j]);
+                    free(elementsCopy);
+                    return NULL;
+                }
+            }
+        }
+        return createArrayLiteralExpr(elementsCopy, expr->as.arrayLiteral.elementCount);
+    }
+
+    case EXPR_ARRAY_ACCESS:
+    {
+        Expr *arrayCopy = copyExpr(expr->as.arrayAccess.array);
+        Expr *indexCopy = copyExpr(expr->as.arrayAccess.index);
+        if (arrayCopy == NULL || indexCopy == NULL)
+        {
+            if (arrayCopy) freeExpr(arrayCopy);
+            if (indexCopy) freeExpr(indexCopy);
+            return NULL;
+        }
+        return createArrayAccessExpr(arrayCopy, indexCopy);
+    }
+
+    case EXPR_ARRAY_ASSIGN:
+    {
+        Expr *arrayCopy = copyExpr(expr->as.arrayAssign.array);
+        Expr *indexCopy = copyExpr(expr->as.arrayAssign.index);
+        Expr *valueCopy = copyExpr(expr->as.arrayAssign.value);
+        if (arrayCopy == NULL || indexCopy == NULL || valueCopy == NULL)
+        {
+            if (arrayCopy) freeExpr(arrayCopy);
+            if (indexCopy) freeExpr(indexCopy);
+            if (valueCopy) freeExpr(valueCopy);
+            return NULL;
+        }
+        return createArrayAssignExpr(arrayCopy, indexCopy, valueCopy);
+    }
+
     default:
         fprintf(stderr, "未知的表达式类型\n");
         return NULL;
     }
 }
+
+// 创建数组字面量表达式
+Expr *createArrayLiteralExpr(Expr **elements, int elementCount)
+{
+    Expr *expr = (Expr *)malloc(sizeof(Expr));
+    if (expr == NULL)
+        return NULL;
+    
+    expr->type = EXPR_ARRAY_LITERAL;
+    expr->as.arrayLiteral.elements = elements;
+    expr->as.arrayLiteral.elementCount = elementCount;
+    return expr;
+}
+
+// 创建数组访问表达式
+Expr *createArrayAccessExpr(Expr *array, Expr *index)
+{
+    Expr *expr = (Expr *)malloc(sizeof(Expr));
+    if (expr == NULL)
+        return NULL;
+    
+    expr->type = EXPR_ARRAY_ACCESS;
+    expr->as.arrayAccess.array = array;
+    expr->as.arrayAccess.index = index;
+    return expr;
+}
+
+// 创建数组赋值表达式
+Expr *createArrayAssignExpr(Expr *array, Expr *index, Expr *value)
+{
+    Expr *expr = (Expr *)malloc(sizeof(Expr));
+    if (expr == NULL)
+        return NULL;
+    
+    expr->type = EXPR_ARRAY_ASSIGN;
+    expr->as.arrayAssign.array = array;
+    expr->as.arrayAssign.index = index;
+    expr->as.arrayAssign.value = value;
+    return expr;
+}
+
 // 释放表达式节点内存
 void freeExpr(Expr *expr)
 {
@@ -440,6 +534,24 @@ void freeExpr(Expr *expr)
         break;
     case EXPR_PREFIX:
         freeExpr(expr->as.prefix.operand);
+        break;
+    case EXPR_ARRAY_LITERAL:
+        for (int i = 0; i < expr->as.arrayLiteral.elementCount; i++)
+        {
+            freeExpr(expr->as.arrayLiteral.elements[i]);
+        }
+        free(expr->as.arrayLiteral.elements);
+        break;
+        
+    case EXPR_ARRAY_ACCESS:
+        freeExpr(expr->as.arrayAccess.array);
+        freeExpr(expr->as.arrayAccess.index);
+        break;
+        
+    case EXPR_ARRAY_ASSIGN:
+        freeExpr(expr->as.arrayAssign.array);
+        freeExpr(expr->as.arrayAssign.index);
+        freeExpr(expr->as.arrayAssign.value);
         break;
     case EXPR_LITERAL:
     case EXPR_VARIABLE:

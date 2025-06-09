@@ -7,6 +7,10 @@
 
 typedef struct Environment Environment;
 
+// 前向声明
+typedef struct Value Value;
+typedef struct Array Array;
+
 // 定义值类型
 typedef enum
 {
@@ -15,15 +19,24 @@ typedef enum
     VAL_NUMBER,
     VAL_STRING,
     VAL_FUNCTION,
-    VAL_NATIVE_FUNCTION
+    VAL_NATIVE_FUNCTION,
+    VAL_ARRAY
 } ValueType;
 
 // 函数类型前向声明
 typedef struct Function Function;
 typedef struct NativeFunction NativeFunction;
 
+// 数组结构
+struct Array {
+    Value *elements;
+    int count;
+    int capacity;
+    BaseType elementType;
+};
+
 // 值结构
-typedef struct
+struct Value
 {
     ValueType type;
     union
@@ -33,8 +46,9 @@ typedef struct
         char *string;
         Function *function;
         NativeFunction *nativeFunction;
+        Array *array;
     } as;
-} Value;
+};
 
 // 函数类型
 struct Function
@@ -64,12 +78,17 @@ Value createString(const char *value);
 Value createFunction(Function *function);
 Value createNativeFunction(NativeFunction *function);
 
+// 数组操作函数
+Value createArray(BaseType elementType, int initialCapacity);
+void arrayPush(Array *array, Value value);
+Value arrayGet(Array *array, int index);
+void arraySet(Array *array, int index, Value value);
+int arrayLength(Array *array);
+
 // 值比较和操作
 bool valuesEqual(Value a, Value b);
 void printValue(Value value);
 Value copyValue(Value value);
 void freeValue(Value value);
-
-bool isValueCompatibleWithType(Value value, TypeAnnotation type);
 
 #endif // SPARROW_VALUE_H

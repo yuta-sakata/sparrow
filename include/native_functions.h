@@ -16,6 +16,12 @@ Value printNative(int argCount, Value *args);
 Value clockNative(int argCount, Value *args);
 Value typeNative(int argCount, Value *args);
 
+// 数组相关的原生函数
+Value lengthNative(int argCount, Value *args);    // 获取数组长度
+Value pushNative(int argCount, Value *args);      // 向动态数组添加元素
+Value popNative(int argCount, Value *args);       // 从动态数组移除元素
+Value sliceNative(int argCount, Value *args);     // 数组切片
+
 // // I/O 原生函数声明
 // Value readLineNative(int argCount, Value* args);
 // Value readFileNative(int argCount, Value* args);

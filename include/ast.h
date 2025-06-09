@@ -12,15 +12,18 @@ typedef struct Stmt Stmt;
 // 表达式类型
 typedef enum
 {
-    EXPR_BINARY,   // 二元表达式
-    EXPR_UNARY,    // 一元表达式
-    EXPR_POSTFIX,  // 后缀表达式
-    EXPR_PREFIX,   // 前缀表达式
-    EXPR_LITERAL,  // 字面量
-    EXPR_GROUPING, // 分组表达式
-    EXPR_VARIABLE, // 变量引用
-    EXPR_ASSIGN,   // 赋值
-    EXPR_CALL,     // 函数调用
+    EXPR_BINARY,        // 二元表达式
+    EXPR_UNARY,         // 一元表达式
+    EXPR_POSTFIX,       // 后缀表达式
+    EXPR_PREFIX,        // 前缀表达式
+    EXPR_LITERAL,       // 字面量
+    EXPR_GROUPING,      // 分组表达式
+    EXPR_VARIABLE,      // 变量引用
+    EXPR_ASSIGN,        // 赋值
+    EXPR_CALL,          // 函数调用
+    EXPR_ARRAY_LITERAL, // 数组字面量
+    EXPR_ARRAY_ACCESS,  // 数组访问
+    EXPR_ARRAY_ASSIGN   // 数组赋值
 } ExprType;
 
 // 语句类型
@@ -40,10 +43,10 @@ typedef enum
 // 多变量声明语句结构
 typedef struct
 {
-    Token *names;      // 变量名数组
-    int count;         // 变量数量
-    Token type;        // 共享的类型
-    Expr *initializer; // 共享的初始值
+    Token *names;        // 变量名数组
+    int count;           // 变量数量
+    TypeAnnotation type; // 共享的类型
+    Expr *initializer;   // 共享的初始值
 } MultiVarStmt;
 
 // 二元表达式
@@ -109,8 +112,30 @@ typedef struct
     int argCount;
 } CallExpr;
 
+// 数组字面量表达式
+typedef struct
+{
+    Expr **elements;  // 数组元素
+    int elementCount; // 元素数量
+} ArrayLiteralExpr;
+
+// 数组访问表达式
+typedef struct
+{
+    Expr *array; // 被访问的数组
+    Expr *index; // 索引表达式
+} ArrayAccessExpr;
+
+// 数组赋值表达式
+typedef struct
+{
+    Expr *array; // 被赋值的数组表达式
+    Expr *index; // 索引表达式
+    Expr *value; // 赋值的值
+} ArrayAssignExpr;
+
 // 表达式结构
-struct Expr
+typedef struct Expr
 {
     ExprType type;
     union
@@ -124,8 +149,11 @@ struct Expr
         VariableExpr variable;
         AssignExpr assign;
         CallExpr call;
+        ArrayLiteralExpr arrayLiteral;
+        ArrayAccessExpr arrayAccess;
+        ArrayAssignExpr arrayAssign;
     } as;
-};
+} Expr;
 
 // 表达式语句
 typedef struct
@@ -220,16 +248,19 @@ Expr *createCallExpr(Expr *callee, Token paren, Expr **arguments, int argCount);
 Expr *createPostfixExpr(Expr *operand, TokenType op);
 Expr *createPrefixExpr(Expr *operand, TokenType op);
 Expr *copyExpr(Expr *expr);
+Expr *createArrayLiteralExpr(Expr **elements, int count);
+Expr *createArrayAccessExpr(Expr *array, Expr *index);
+Expr *createArrayAssignExpr(Expr *array, Expr *index, Expr *value);
 
 // 创建语句节点的函数
 Stmt *createExpressionStmt(Expr *expression);
-Stmt *createVarStmt(Token name, Token type, Expr *initializer);
-Stmt *createMultiVarStmt(Token *names, int count, Token type, Expr *initializer);
+Stmt *createVarStmt(Token name, TypeAnnotation type, Expr *initializer);
+Stmt *createMultiVarStmt(Token *names, int count, TypeAnnotation type, Expr *initializer);
 Stmt *createBlockStmt(Stmt **statements, int count);
 Stmt *createIfStmt(Expr *condition, Stmt *thenBranch, Stmt *elseBranch);
 Stmt *createWhileStmt(Expr *condition, Stmt *body);
 Stmt *createForStmt(Stmt *initializer, Expr *condition, Expr *increment, Stmt *body);
-Stmt *createFunctionStmt(Token name, Token *params, bool *paramHasVar, Token *paramTypes, int paramCount, Token returnTypeToken, Stmt *body);
+Stmt *createFunctionStmt(Token name, Token *params, bool *paramHasVar, TypeAnnotation *paramTypes, int paramCount, TypeAnnotation returnTypeToken, Stmt *body);
 Stmt *createReturnStmt(Token keyword, Expr *value);
 
 // 释放AST节点内存

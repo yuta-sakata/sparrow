@@ -12,6 +12,7 @@ typedef struct
 static Keyword keywords[] = {
     {"if", 2, TOKEN_IF},
     {"else", 4, TOKEN_ELSE},
+    {"in", 2,TOKEN_IN},
     {"while", 5, TOKEN_WHILE},
     {"for", 3, TOKEN_FOR},
     {"return", 6, TOKEN_RETURN},
@@ -384,6 +385,10 @@ Token nextToken(Lexer *lexer)
         return makeToken(lexer, TOKEN_LBRACE);
     case '}':
         return makeToken(lexer, TOKEN_RBRACE);
+    case '[':
+        return makeToken(lexer, TOKEN_LBRACKET);
+    case ']':
+        return makeToken(lexer, TOKEN_RBRACKET);
     case ';':
         return makeToken(lexer, TOKEN_SEMICOLON);
     case ',':

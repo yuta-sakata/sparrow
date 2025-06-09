@@ -39,6 +39,8 @@ typedef enum
 	TOKEN_RPAREN,	 // )
 	TOKEN_LBRACE,	 // {
 	TOKEN_RBRACE,	 // }
+	TOKEN_LBRACKET,     // [
+    TOKEN_RBRACKET,     // ]
 	TOKEN_SEMICOLON, // ;
 	TOKEN_COMMA,	 // ,
 	TOKEN_COLON,	 // :
@@ -46,6 +48,7 @@ typedef enum
 	// 关键字
 	TOKEN_IF,		   // if
 	TOKEN_ELSE,		   // else
+	TOKEN_IN,		   // in
 	TOKEN_WHILE,	   // while
 	TOKEN_FOR,		   // for
 	TOKEN_RETURN,	   // return

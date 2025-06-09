@@ -17,6 +17,9 @@ static Value evaluateVariable(Interpreter *interpreter, Expr *expr);
 static Value evaluateAssign(Interpreter *interpreter, Expr *expr);
 static Value evaluatePostfix(Interpreter *interpreter, Expr *expr);
 static Value evaluatePrefix(Interpreter *interpreter, Expr *expr);
+static Value evaluateArrayLiteral(Interpreter *interpreter, Expr *expr);
+static Value evaluateArrayAccess(Interpreter *interpreter, Expr *expr);
+static Value evaluateArrayAssign(Interpreter *interpreter, Expr *expr);
 
 static void executeExpression(Interpreter *interpreter, Stmt *stmt);
 static void executeVar(Interpreter *interpreter, Stmt *stmt);
@@ -158,6 +161,12 @@ Value evaluate(Interpreter *interpreter, Expr *expr)
 		return evaluatePostfix(interpreter, expr);
 	case EXPR_PREFIX:
 		return evaluatePrefix(interpreter, expr);
+	case EXPR_ARRAY_LITERAL:
+		return evaluateArrayLiteral(interpreter, expr);
+	case EXPR_ARRAY_ACCESS:
+		return evaluateArrayAccess(interpreter, expr);
+	case EXPR_ARRAY_ASSIGN:
+		return evaluateArrayAssign(interpreter, expr);
 	}
 
 	return createNull();
@@ -733,6 +742,128 @@ Value evaluatePrefix(Interpreter *interpreter, Expr *expr)
 	// 前缀运算符返回新值
 	freeValue(oldValue);
 	return newValue;
+}
+
+// 实现数组字面量求值
+static Value evaluateArrayLiteral(Interpreter *interpreter, Expr *expr)
+{
+    Value arrayValue = createArray(TYPE_ANY, expr->as.arrayLiteral.elementCount);
+    if (arrayValue.type == VAL_NULL)
+    {
+        runtimeError(interpreter, "无法创建数组");
+        return createNull();
+    }
+    
+    // 求值所有元素并添加到数组
+    for (int i = 0; i < expr->as.arrayLiteral.elementCount; i++)
+    {
+        Value element = evaluate(interpreter, expr->as.arrayLiteral.elements[i]);
+        if (interpreter->hadError)
+        {
+            freeValue(arrayValue);
+            return createNull();
+        }
+        arrayPush(arrayValue.as.array, element);
+        freeValue(element);
+    }
+    
+    return arrayValue;
+}
+
+// 实现数组访问求值
+static Value evaluateArrayAccess(Interpreter *interpreter, Expr *expr)
+{
+    Value arrayValue = evaluate(interpreter, expr->as.arrayAccess.array);
+    if (interpreter->hadError)
+    {
+        return createNull();
+    }
+    
+    Value indexValue = evaluate(interpreter, expr->as.arrayAccess.index);
+    if (interpreter->hadError)
+    {
+        freeValue(arrayValue);
+        return createNull();
+    }
+    
+    // 检查数组类型
+    if (arrayValue.type != VAL_ARRAY)
+    {
+        freeValue(arrayValue);
+        freeValue(indexValue);
+        runtimeError(interpreter, "只能对数组进行索引访问");
+        return createNull();
+    }
+    
+    // 检查索引类型
+    if (indexValue.type != VAL_NUMBER)
+    {
+        freeValue(arrayValue);
+        freeValue(indexValue);
+        runtimeError(interpreter, "数组索引必须是数字");
+        return createNull();
+    }
+    
+    int index = (int)indexValue.as.number;
+    Value result = arrayGet(arrayValue.as.array, index);
+    
+    freeValue(arrayValue);
+    freeValue(indexValue);
+    
+    return result;
+}
+
+// 实现数组赋值求值
+static Value evaluateArrayAssign(Interpreter *interpreter, Expr *expr)
+{
+    Value arrayValue = evaluate(interpreter, expr->as.arrayAssign.array);
+    if (interpreter->hadError)
+    {
+        return createNull();
+    }
+    
+    Value indexValue = evaluate(interpreter, expr->as.arrayAssign.index);
+    if (interpreter->hadError)
+    {
+        freeValue(arrayValue);
+        return createNull();
+    }
+    
+    Value value = evaluate(interpreter, expr->as.arrayAssign.value);
+    if (interpreter->hadError)
+    {
+        freeValue(arrayValue);
+        freeValue(indexValue);
+        return createNull();
+    }
+    
+    // 检查数组类型
+    if (arrayValue.type != VAL_ARRAY)
+    {
+        freeValue(arrayValue);
+        freeValue(indexValue);
+        freeValue(value);
+        runtimeError(interpreter, "只能对数组进行索引赋值");
+        return createNull();
+    }
+    
+    // 检查索引类型
+    if (indexValue.type != VAL_NUMBER)
+    {
+        freeValue(arrayValue);
+        freeValue(indexValue);
+        freeValue(value);
+        runtimeError(interpreter, "数组索引必须是数字");
+        return createNull();
+    }
+    
+    int index = (int)indexValue.as.number;
+    arraySet(arrayValue.as.array, index, value);
+    
+    freeValue(arrayValue);
+    freeValue(indexValue);
+    
+    return value;
 }
 
 // 实现条件语句执行

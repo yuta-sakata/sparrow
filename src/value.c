@@ -141,6 +141,15 @@ void printValue(Value value)
     case VAL_NATIVE_FUNCTION:
         printf("<native function %s>", value.as.nativeFunction->name);
         break;
+    case VAL_ARRAY:
+        printf("[");
+        for (int i = 0; i < value.as.array->count; i++)
+        {
+            if (i > 0) printf(", ");
+            printValue(value.as.array->elements[i]);
+        }
+        printf("]");
+        break;
     }
 }
 
@@ -319,6 +328,27 @@ Value copyValue(Value value)
         newValue.as.nativeFunction = newNativeFunction;
         return newValue;
     }
+    case VAL_ARRAY:
+    {
+        if (value.as.array == NULL)
+        {
+            return createNull();
+        }
+        
+        Value newArrayValue = createArray(value.as.array->elementType, value.as.array->capacity);
+        if (newArrayValue.type == VAL_NULL)
+        {
+            return createNull();
+        }
+        
+        // 复制所有元素
+        for (int i = 0; i < value.as.array->count; i++)
+        {
+            arrayPush(newArrayValue.as.array, value.as.array->elements[i]);
+        }
+        
+        return newArrayValue;
+    }
     default:
         // 对于简单值类型，直接复制
         return value;
@@ -380,37 +410,112 @@ void freeValue(Value value)
             free(value.as.nativeFunction);
         }
         break;
-
+    case VAL_ARRAY:
+        if (value.as.array != NULL)
+        {
+            for (int i = 0; i < value.as.array->count; i++)
+            {
+                freeValue(value.as.array->elements[i]);
+            }
+            free(value.as.array->elements);
+            free(value.as.array);
+        }
+        break;
     default:
         // 其他类型不需要释放
         break;
     }
 }
-// 检查值是否与类型注解兼容
-bool isValueCompatibleWithType(Value value, TypeAnnotation type)
+
+
+// 创建数组值
+Value createArray(BaseType elementType, int initialCapacity)
 {
-    if (type == TYPE_ANY)
-        return true;
-
-    switch (type)
+    Value val;
+    val.type = VAL_ARRAY;
+    
+    Array *array = (Array *)malloc(sizeof(Array));
+    if (array == NULL)
     {
-    case TYPE_VOID:
-        return value.type == VAL_NULL;
-
-    case TYPE_INT:
-    case TYPE_FLOAT:
-        return value.type == VAL_NUMBER;
-
-    case TYPE_STRING:
-        return value.type == VAL_STRING;
-
-    case TYPE_BOOL:
-        return value.type == VAL_BOOL;
-
-    case TYPE_FUNCTION:
-        return value.type == VAL_FUNCTION || value.type == VAL_NATIVE_FUNCTION;
-
-    default:
-        return false;
+        val.type = VAL_NULL;
+        return val;
     }
+    
+    array->capacity = initialCapacity > 0 ? initialCapacity : 8;
+    array->count = 0;
+    array->elementType = elementType;
+    array->elements = (Value *)malloc(sizeof(Value) * array->capacity);
+    
+    if (array->elements == NULL)
+    {
+        free(array);
+        val.type = VAL_NULL;
+        return val;
+    }
+    
+    val.as.array = array;
+    return val;
+}
+
+// 数组操作函数
+void arrayPush(Array *array, Value value)
+{
+    if (array == NULL) return;
+    
+    if (array->count >= array->capacity)
+    {
+        array->capacity *= 2;
+        array->elements = (Value *)realloc(array->elements, sizeof(Value) * array->capacity);
+    }
+    
+    array->elements[array->count++] = copyValue(value);
+}
+
+Value arrayGet(Array *array, int index)
+{
+    if (array == NULL || index < 0 || index >= array->count)
+    {
+        return createNull();
+    }
+    
+    return copyValue(array->elements[index]);
+}
+
+void arraySet(Array *array, int index, Value value)
+{
+    if (array == NULL || index < 0) return;
+    
+    // 如果索引超出当前范围，扩展数组
+    if (index >= array->capacity)
+    {
+        int newCapacity = index + 1;
+        if (newCapacity < array->capacity * 2)
+            newCapacity = array->capacity * 2;
+        
+        array->elements = (Value *)realloc(array->elements, sizeof(Value) * newCapacity);
+        array->capacity = newCapacity;
+    }
+    
+    // 填充中间的空位
+    while (array->count <= index)
+    {
+        array->elements[array->count++] = createNull();
+    }
+    
+    // 释放旧值并设置新值
+    if (index < array->count)
+    {
+        freeValue(array->elements[index]);
+    }
+    
+    array->elements[index] = copyValue(value);
+    if (index >= array->count)
+    {
+        array->count = index + 1;
+    }
+}
+
+int arrayLength(Array *array)
+{
+    return array ? array->count : 0;
 }

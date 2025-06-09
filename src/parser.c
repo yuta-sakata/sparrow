@@ -16,6 +16,7 @@ static Expr *primary(Parser *parser);
 static Expr *finishCall(Parser *parser, Expr *callee);
 static Expr *logicalOr(Parser *parser);
 static Expr *logicalAnd(Parser *parser);
+static Expr *arrayLiteral(Parser *parser);
 
 static Stmt *declaration(Parser *parser);
 static Stmt *functionDeclaration(Parser *parser);
@@ -212,13 +213,13 @@ static Stmt *declaration(Parser *parser)
         if (count == 1)
         {
             // 只有一个变量，直接创建并返回单个语句
-            Stmt *stmt = createVarStmt(names[0], type, initializer);
+            Stmt *stmt = createVarStmt(names[0], tokenToTypeAnnotation(type.type), initializer);
             free(names);
             return stmt;
         }
         else
         {
-            return createMultiVarStmt(names, count, type, initializer);
+            return createMultiVarStmt(names, count, tokenToTypeAnnotation(type.type), initializer);
         }
     }
 
@@ -238,7 +239,8 @@ static Stmt *functionDeclaration(Parser *parser)
 
     // 参数列表
     Token *parameters = NULL;
-    Token *paramTypes = NULL;
+    Token *paramTokenTypes = NULL;     // 重命名以区分
+    TypeAnnotation *paramTypes = NULL; // 新增：用于存储转换后的类型注解
     bool *paramHasVarFlags = NULL;
     int paramCount = 0;
     int paramCapacity = 0;
@@ -252,6 +254,8 @@ static Stmt *functionDeclaration(Parser *parser)
                 error(parser, "Cannot have more than 255 parameters.");
                 if (parameters)
                     free(parameters);
+                if (paramTokenTypes)
+                    free(paramTokenTypes);
                 if (paramTypes)
                     free(paramTypes);
                 if (paramHasVarFlags)
@@ -270,6 +274,8 @@ static Stmt *functionDeclaration(Parser *parser)
                 error(parser, "First function parameter must be declared with 'var' keyword.");
                 if (parameters)
                     free(parameters);
+                if (paramTokenTypes)
+                    free(paramTokenTypes);
                 if (paramTypes)
                     free(paramTypes);
                 if (paramHasVarFlags)
@@ -288,6 +294,8 @@ static Stmt *functionDeclaration(Parser *parser)
             {
                 if (parameters)
                     free(parameters);
+                if (paramTokenTypes)
+                    free(paramTokenTypes);
                 if (paramTypes)
                     free(paramTypes);
                 if (paramHasVarFlags)
@@ -323,6 +331,8 @@ static Stmt *functionDeclaration(Parser *parser)
                     error(parser, "Expected parameter type after ':'.");
                     if (parameters)
                         free(parameters);
+                    if (paramTokenTypes)
+                        free(paramTokenTypes);
                     if (paramTypes)
                         free(paramTypes);
                     if (paramHasVarFlags)
@@ -336,13 +346,15 @@ static Stmt *functionDeclaration(Parser *parser)
             {
                 paramCapacity = paramCapacity == 0 ? 8 : paramCapacity * 2;
                 parameters = (Token *)realloc(parameters, paramCapacity * sizeof(Token));
-                paramTypes = (Token *)realloc(paramTypes, paramCapacity * sizeof(Token));
+                paramTokenTypes = (Token *)realloc(paramTokenTypes, paramCapacity * sizeof(Token));
+                paramTypes = (TypeAnnotation *)realloc(paramTypes, paramCapacity * sizeof(TypeAnnotation));
                 paramHasVarFlags = (bool *)realloc(paramHasVarFlags, paramCapacity * sizeof(bool));
             }
 
             // 添加参数信息
             parameters[paramCount] = param;
-            paramTypes[paramCount] = paramType;
+            paramTokenTypes[paramCount] = paramType;
+            paramTypes[paramCount] = tokenToTypeAnnotation(paramType.type); // 转换为TypeAnnotation
             paramHasVarFlags[paramCount] = hasVar;
             paramCount++;
 
@@ -354,6 +366,8 @@ static Stmt *functionDeclaration(Parser *parser)
     {
         if (parameters)
             free(parameters);
+        if (paramTokenTypes)
+            free(paramTokenTypes);
         if (paramTypes)
             free(paramTypes);
         if (paramHasVarFlags)
@@ -393,6 +407,8 @@ static Stmt *functionDeclaration(Parser *parser)
             error(parser, "Expected return type after ':'.");
             if (parameters)
                 free(parameters);
+            if (paramTokenTypes)
+                free(paramTokenTypes);
             if (paramTypes)
                 free(paramTypes);
             if (paramHasVarFlags)
@@ -407,6 +423,8 @@ static Stmt *functionDeclaration(Parser *parser)
     {
         if (parameters)
             free(parameters);
+        if (paramTokenTypes)
+            free(paramTokenTypes);
         if (paramTypes)
             free(paramTypes);
         if (paramHasVarFlags)
@@ -419,6 +437,8 @@ static Stmt *functionDeclaration(Parser *parser)
     {
         if (parameters)
             free(parameters);
+        if (paramTokenTypes)
+            free(paramTokenTypes);
         if (paramTypes)
             free(paramTypes);
         if (paramHasVarFlags)
@@ -426,7 +446,14 @@ static Stmt *functionDeclaration(Parser *parser)
         return NULL;
     }
 
-    return createFunctionStmt(name, parameters, paramHasVarFlags, paramTypes, paramCount, returnType, body);
+    // 现在传递正确的类型
+    Stmt *result = createFunctionStmt(name, parameters, paramHasVarFlags, paramTypes, paramCount, tokenToTypeAnnotation(returnType.type), body);
+
+    // 清理临时的Token类型数组
+    if (paramTokenTypes)
+        free(paramTokenTypes);
+
+    return result;
 }
 
 // 解析变量声明
@@ -478,8 +505,7 @@ static Stmt *varDeclaration(Parser *parser)
             freeExpr(initializer);
         return NULL;
     }
-
-    return createVarStmt(name, type, initializer);
+    return createVarStmt(name, tokenToTypeAnnotation(type.type), initializer);
 }
 
 // 解析语句
@@ -731,6 +757,12 @@ static Expr *assignment(Parser *parser)
             freeExpr(expr);
             return createAssignExpr(name, value);
         }
+        else if (expr->type == EXPR_ARRAY_ACCESS)
+        {
+            // 数组元素赋值
+            return createArrayAssignExpr(expr->as.arrayAccess.array,
+                                         expr->as.arrayAccess.index, value);
+        }
 
         error(parser, "Invalid assignment target.");
         freeExpr(value);
@@ -850,6 +882,19 @@ static Expr *call(Parser *parser)
         {
             expr = finishCall(parser, expr);
         }
+        else if (match(parser, TOKEN_LBRACKET))
+        {
+            // 数组索引访问
+            Expr *index = expression(parser);
+            consume(parser, TOKEN_RBRACKET, "Expect ']' after array index.");
+            if (parser->hadError)
+            {
+                freeExpr(expr);
+                freeExpr(index);
+                return NULL;
+            }
+            expr = createArrayAccessExpr(expr, index);
+        }
         else if (match(parser, TOKEN_PLUS_PLUS) || match(parser, TOKEN_MINUS_MINUS))
         {
             TokenType op = previous(parser).type;
@@ -952,6 +997,42 @@ Expr *logicalAnd(Parser *parser)
     return expr;
 }
 
+// 解析数组字面量
+static Expr *arrayLiteral(Parser *parser)
+{
+    Expr **elements = NULL;
+    int count = 0;
+    int capacity = 0;
+
+    if (!check(parser, TOKEN_RBRACKET))
+    {
+        do
+        {
+            if (count >= capacity)
+            {
+                capacity = capacity == 0 ? 8 : capacity * 2;
+                elements = (Expr **)realloc(elements, capacity * sizeof(Expr *));
+            }
+
+            elements[count++] = expression(parser);
+
+        } while (match(parser, TOKEN_COMMA));
+    }
+
+    consume(parser, TOKEN_RBRACKET, "Expect ']' after array elements.");
+    if (parser->hadError)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            freeExpr(elements[i]);
+        }
+        free(elements);
+        return NULL;
+    }
+
+    return createArrayLiteralExpr(elements, count);
+}
+
 // 解析基本表达式
 static Expr *primary(Parser *parser)
 {
@@ -979,6 +1060,11 @@ static Expr *primary(Parser *parser)
     if (match(parser, TOKEN_INTEGER) || match(parser, TOKEN_FLOAT) || match(parser, TOKEN_STRING))
     {
         return createLiteralExpr(previous(parser));
+    }
+
+    if (match(parser, TOKEN_LBRACKET))
+    {
+        return arrayLiteral(parser);
     }
 
     if (match(parser, TOKEN_IDENTIFIER))

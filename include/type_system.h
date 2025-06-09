@@ -2,7 +2,9 @@
 #define SPARROW_TYPE_SYSTEM_H
 #include <stdbool.h>
 
-// 定义类型注解枚举
+struct Expr;
+
+// 基本数据类型注解
 typedef enum
 {
     TYPE_ANY,     // 未指定类型
@@ -12,6 +14,21 @@ typedef enum
     TYPE_STRING,  // 字符串类型
     TYPE_BOOL,    // 布尔类型
     TYPE_FUNCTION // 函数类型
+} BaseType;
+
+// 类型注解结构
+typedef struct TypeAnnotation {
+    enum {
+        TYPE_SIMPLE,
+        TYPE_ARRAY
+    } kind;
+    union {
+        BaseType simple;     // 简单类型
+        struct {
+            BaseType elementType;  // 数组元素类型
+            struct Expr *size;           // 数组大小（NULL表示动态数组）
+        } array;
+    } as;
 } TypeAnnotation;
 
 // 类型操作函数

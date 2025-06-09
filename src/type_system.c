@@ -5,7 +5,26 @@
 // 类型注解转字符串
 const char *annotationToString(TypeAnnotation type)
 {
-    switch (type)
+    if (type.kind == TYPE_ARRAY)
+    {
+        // 处理数组类型，这里简化处理
+        switch (type.as.array.elementType)
+        {
+        case TYPE_INT:
+            return "int[]";
+        case TYPE_FLOAT:
+            return "float[]";
+        case TYPE_STRING:
+            return "string[]";
+        case TYPE_BOOL:
+            return "boolean[]";
+        default:
+            return "unknown[]";
+        }
+    }
+
+    // 处理简单类型
+    switch (type.as.simple)
     {
     case TYPE_ANY:
         return "any";
@@ -29,20 +48,32 @@ const char *annotationToString(TypeAnnotation type)
 // 从词法标记转换为类型注解
 TypeAnnotation tokenToTypeAnnotation(int tokenType)
 {
+    TypeAnnotation annotation;
+    annotation.kind = TYPE_SIMPLE;
+
     switch (tokenType)
     {
     case TOKEN_VOID:
-        return TYPE_VOID;
+        annotation.as.simple = TYPE_VOID;
+        break;
     case TOKEN_INT:
-        return TYPE_INT;
-    case TOKEN_FLOAT:
-        return TYPE_FLOAT;
-    case TOKEN_STRING:
-        return TYPE_STRING;
+        annotation.as.simple = TYPE_INT;
+        break;
+    case TOKEN_FLOAT_TYPE:
+        annotation.as.simple = TYPE_FLOAT;
+        break;
+    case TOKEN_STRING_TYPE:
+        annotation.as.simple = TYPE_STRING;
+        break;
+    case TOKEN_BOOL:
     case TOKEN_TRUE:
     case TOKEN_FALSE:
-        return TYPE_BOOL;
+        annotation.as.simple = TYPE_BOOL;
+        break;
     default:
-        return TYPE_ANY;
+        annotation.as.simple = TYPE_ANY;
+        break;
     }
+
+    return annotation;
 }
