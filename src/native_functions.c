@@ -73,6 +73,7 @@ void registerAllNativeFunctions(Interpreter *interpreter)
     registerNativeFunction(interpreter, "print", -1, printNative);
     registerNativeFunction(interpreter, "clock", 0, clockNative);
     registerNativeFunction(interpreter, "type", 1, typeNative);
+    registerNativeFunction(interpreter, "input", -1, inputNative);
 
     // 数组相关函数
     registerNativeFunction(interpreter, "length", 1, lengthNative);
@@ -83,22 +84,6 @@ void registerAllNativeFunctions(Interpreter *interpreter)
     // 标记解释器支持 main 函数
     interpreter->hasMainFunction = false;
     interpreter->mainFunction = NULL;
-
-    // // I/O 函数
-    // registerNativeFunction(interpreter, "readLine", 0, readLineNative);
-    // registerNativeFunction(interpreter, "readFile", 1, readFileNative);
-    // registerNativeFunction(interpreter, "writeFile", 2, writeFileNative);
-
-    // // 数学函数
-    // registerNativeFunction(interpreter, "sqrt", 1, sqrtNative);
-    // registerNativeFunction(interpreter, "sin", 1, sinNative);
-    // registerNativeFunction(interpreter, "cos", 1, cosNative);
-    // registerNativeFunction(interpreter, "random", 0, randomNative);
-
-    // // 字符串函数
-    // registerNativeFunction(interpreter, "strlen", 1, strLenNative);
-    // registerNativeFunction(interpreter, "substring", 3, subStringNative);
-    // registerNativeFunction(interpreter, "concat", -1, strConcatNative);
 }
 
 // 实现 print 原生函数
@@ -119,6 +104,61 @@ Value printNative(int argCount, Value *args)
     }
     printf("\n");
     return createNull();
+}
+
+
+//input 原生函数
+Value inputNative(int argCount, Value *args)
+{
+    // 检查参数数量（0个或1个）
+    if (argCount > 1)
+    {
+        printf("ERROR: input() takes at most 1 argument\n");
+        return createNull();
+    }
+
+    // 如果有参数，打印提示信息
+    if (argCount == 1)
+    {
+        if (args[0].type == VAL_STRING)
+        {
+            printf("%s", args[0].as.string);
+        }
+        else
+        {
+            // 如果参数不是字符串，先转换为字符串显示
+            printValue(args[0]);
+        }
+        fflush(stdout); // 确保提示信息立即显示
+    }
+
+    // 分配缓冲区来存储用户输入
+    char *buffer = malloc(1024);
+    if (buffer == NULL)
+    {
+        printf("ERROR: Memory allocation failed for input buffer\n");
+        return createNull();
+    }
+
+    // 读取用户输入
+    if (fgets(buffer, 1024, stdin) == NULL)
+    {
+        free(buffer);
+        return createString(""); // 如果读取失败，返回空字符串
+    }
+
+    // 移除换行符
+    size_t len = strlen(buffer);
+    if (len > 0 && buffer[len - 1] == '\n')
+    {
+        buffer[len - 1] = '\0';
+    }
+
+    // 创建字符串值
+    Value result = createString(buffer);
+    free(buffer);
+    
+    return result;
 }
 
 // 实现 clock 原生函数
