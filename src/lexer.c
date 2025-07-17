@@ -53,7 +53,24 @@ void initLexer(Lexer *lexer, const char *source)
     lexer->line = 1;
 }
 
-// 执行词法分析
+/**
+ * @brief 执行词法分析，将源代码转换为令牌序列
+ * 
+ * 此函数对输入的源代码进行词法分析，生成令牌数组。函数会自动管理内存，
+ * 当令牌数量超过初始容量时会动态扩展数组大小。
+ * 
+ * @param source 待分析的源代码字符串，必须以null结尾
+ * @param tokenCount 输出参数，用于返回生成的令牌数量
+ * 
+ * @return Token* 返回令牌数组的指针，调用者负责释放内存；
+ *                如果内存分配失败则返回NULL
+ * 
+ * @note 返回的令牌数组包含源代码的所有令牌，包括最后的EOF令牌
+ * @note 如果函数执行失败，*tokenCount将被设置为0
+ * @note 调用者需要负责释放返回的令牌数组以及数组中每个令牌的内存
+ * 
+ * @warning 如果内存分配失败，函数会自动清理已分配的资源
+ */
 Token *performLexicalAnalysis(const char *source, int *tokenCount)
 {
     Lexer lexer;
@@ -315,17 +332,17 @@ static Token number(Lexer *lexer)
 // 处理字符串
 static Token string(Lexer *lexer)
 {
-    // 跳过开始的引号
-    advance(lexer);
-
-    // 临时缓冲区用于存储处理转义字符后的字符串
-    char *buffer = malloc(256); // 初始大小
+    // 保存字符串的起始位置（跳过开头的引号）
+    const char *start = lexer->current;
+    
+    // 分配缓冲区
+    int bufferSize = 256;
+    char *buffer = malloc(bufferSize);
     if (buffer == NULL)
     {
         return errorToken(lexer, "Memory allocation failed.");
     }
 
-    int bufferSize = 256;
     int bufferPos = 0;
 
     while (peek(lexer) != '"' && !isAtEnd(lexer))
@@ -382,8 +399,7 @@ static Token string(Lexer *lexer)
                 actualChar = '/'; // 斜杠
                 break;
             default:
-                // 未知转义序列，保持原样 - 这里可以选择报错或者保持原字符
-                // 为了兼容性，我们保持原字符
+                // 未知转义序列，保持原样
                 actualChar = escaped;
                 break;
             }
@@ -406,10 +422,6 @@ static Token string(Lexer *lexer)
         else
         {
             // 普通字符
-            if (c == '\n')
-                lexer->line++;
-
-            // 确保缓冲区足够大
             if (bufferPos >= bufferSize - 1)
             {
                 bufferSize *= 2;
@@ -422,8 +434,7 @@ static Token string(Lexer *lexer)
                 buffer = newBuffer;
             }
 
-            buffer[bufferPos++] = c;
-            advance(lexer);
+            buffer[bufferPos++] = advance(lexer);
         }
     }
 
@@ -433,14 +444,24 @@ static Token string(Lexer *lexer)
         return errorToken(lexer, "Unterminated string.");
     }
 
-    // 跳过结束的引号
+    // 消耗结束的引号
     advance(lexer);
 
     // 添加字符串结束符
     buffer[bufferPos] = '\0';
 
+    // 创建 token
     Token token = makeToken(lexer, TOKEN_STRING);
-    token.value.stringValue = buffer; // 直接使用处理后的缓冲区
+    
+    // 复制处理后的字符串到 value.stringValue
+    token.value.stringValue = malloc(strlen(buffer) + 1);
+    if (token.value.stringValue != NULL)
+    {
+        strcpy(token.value.stringValue, buffer);
+    }
+    
+    // 释放临时缓冲区
+    free(buffer);
 
     return token;
 }
@@ -543,14 +564,19 @@ Token nextToken(Lexer *lexer)
 // 释放标记占用的内存
 void freeToken(Token *token)
 {
-    if (token->lexeme)
+    if (token == NULL)
+        return;
+        
+    if (token->lexeme != NULL)
     {
         free(token->lexeme);
+        token->lexeme = NULL;
     }
 
-    if (token->type == TOKEN_STRING && token->value.stringValue)
+    if (token->type == TOKEN_STRING && token->value.stringValue != NULL)
     {
         free(token->value.stringValue);
+        token->value.stringValue = NULL;
     }
 }
 

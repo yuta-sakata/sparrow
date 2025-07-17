@@ -587,17 +587,27 @@ static Value evaluateLiteral(Expr *expr)
 	{
 		// 去掉字符串两端的引号
 		int len = strlen(token.lexeme);
-		char *str = malloc(len - 1);
-		if (str == NULL)
+		if (len >= 2 && token.lexeme[0] == '"' && token.lexeme[len - 1] == '"')
 		{
-			return createNull();
+			if (token.value.stringValue != NULL)
+			{
+				return createString(token.value.stringValue);
+			}
+			else
+			{
+				// fallback: 手动去掉引号
+				char *str = malloc(len - 1);
+				if (str != NULL)
+				{
+					strncpy(str, token.lexeme + 1, len - 2);
+					str[len - 2] = '\0';
+					Value result = createString(str);
+					free(str);
+					return result;
+				}
+			}
 		}
-		strncpy(str, token.lexeme + 1, len - 2);
-		str[len - 2] = '\0';
-
-		Value val = createString(str);
-		free(str);
-		return val;
+		return createString(token.lexeme);
 	}
 	case TOKEN_TRUE:
 		return createBool(true);
@@ -748,31 +758,31 @@ Value evaluatePrefix(Interpreter *interpreter, Expr *expr)
 static Value evaluateArrayLiteral(Interpreter *interpreter, Expr *expr)
 {
 	Value arrayValue = createArray(TYPE_ANY, expr->as.arrayLiteral.elementCount);
-    if (arrayValue.type == VAL_NULL)
-    {
-        runtimeError(interpreter, "无法创建数组");
-        return createNull();
-    }
+	if (arrayValue.type == VAL_NULL)
+	{
+		runtimeError(interpreter, "无法创建数组");
+		return createNull();
+	}
 
-    // 求值所有元素并添加到数组
-    for (int i = 0; i < expr->as.arrayLiteral.elementCount; i++)
-    {
-        Value element = evaluate(interpreter, expr->as.arrayLiteral.elements[i]);
-        if (interpreter->hadError)
-        {
-            freeValue(arrayValue);
-            return createNull();
-        }
+	// 求值所有元素并添加到数组
+	for (int i = 0; i < expr->as.arrayLiteral.elementCount; i++)
+	{
+		Value element = evaluate(interpreter, expr->as.arrayLiteral.elements[i]);
+		if (interpreter->hadError)
+		{
+			freeValue(arrayValue);
+			return createNull();
+		}
 
-        // 创建元素的副本，确保内存安全
-        Value elementCopy = copyValue(element);
-        arrayPush(arrayValue.as.array, elementCopy);
-        
-        // 释放临时的element
-        freeValue(element);
-    }
+		// 创建元素的副本，确保内存安全
+		Value elementCopy = copyValue(element);
+		arrayPush(arrayValue.as.array, elementCopy);
 
-    return arrayValue;
+		// 释放临时的element
+		freeValue(element);
+	}
+
+	return arrayValue;
 }
 
 // 实现数组访问求值
@@ -1098,7 +1108,31 @@ static Value evaluateCall(Interpreter *interpreter, Expr *expr)
 	return result;
 }
 
-// 执行函数声明
+
+/**
+ * 执行函数定义语句，创建函数对象并将其绑定到当前环境
+ * 
+ * 该函数负责：
+ * 1. 创建并初始化函数对象
+ * 2. 分配并复制函数名
+ * 3. 设置函数参数数量和返回类型
+ * 4. 分配并复制参数名数组
+ * 5. 设置函数体语句
+ * 6. 设置闭包环境（当前为全局环境）
+ * 7. 检查是否为 main 函数并进行特殊处理
+ * 8. 将函数对象包装为 Value 并定义到当前环境中
+ * 
+ * 内存管理：
+ * - 动态分配函数对象和相关字符串内存
+ * - 在分配失败时进行完整的内存清理
+ * - 参数名数组的分配采用逐个分配策略，失败时清理已分配部分
+ * 
+ * @param interpreter 解释器实例，包含环境和全局状态
+ * @param stmt 函数定义语句，包含函数名、参数、返回类型和函数体
+ * 
+ * @note 如果内存分配失败，会调用 runtimeError 并提前返回
+ * @note main 函数会被特殊标记并存储在解释器中
+ */
 static void executeFunction(Interpreter *interpreter, Stmt *stmt)
 {
 	// 创建函数对象
@@ -1196,7 +1230,34 @@ static void executeReturn(Interpreter *interpreter, Stmt *stmt)
 	returnStatus.value = value;
 }
 
-// 注册原生函数
+/**
+ * 调用函数并执行函数体
+ * 
+ * 此函数负责执行用户定义的函数调用，包括参数验证、环境设置、
+ * 参数绑定和函数体执行。
+ * 
+ * @param interpreter 解释器实例指针，用于执行函数体和错误处理
+ * @param function 要调用的函数对象指针，包含函数的元数据和函数体
+ * @param arguments 传入的参数值数组
+ * @param argCount 传入参数的数量
+ * 
+ * @return Value 函数的返回值。如果函数有显式返回语句则返回该值，
+ *               否则返回null值。如果参数数量不匹配则返回null值。
+ * 
+ * 函数执行流程：
+ * 1. 验证传入参数数量是否与函数定义的参数数量匹配
+ * 2. 创建新的执行环境，父环境设置为函数的闭包环境
+ * 3. 将传入的参数值绑定到对应的参数名
+ * 4. 切换解释器的当前环境到新创建的函数环境
+ * 5. 重置全局返回状态
+ * 6. 执行函数体语句
+ * 7. 恢复解释器的原始环境
+ * 8. 清理函数执行环境
+ * 9. 返回函数的执行结果
+ * 
+ * @note 此函数会修改全局的returnStatus状态
+ * @note 函数执行过程中会临时切换解释器环境
+ */
 static Value callFunction(Interpreter *interpreter, Function *function,
 						  Value *arguments, int argCount)
 {

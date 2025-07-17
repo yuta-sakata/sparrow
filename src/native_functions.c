@@ -228,8 +228,9 @@ Value pushNative(int argCount, Value *args)
         return createString("Error: NULL array passed to push()");
     }
 
-    // 修复：直接操作传入的数组，不创建副本
-    Array *array = args[0].as.array;
+    // 创建原数组的完整副本
+    Value newArrayValue = copyValue(args[0]);
+    Array *array = newArrayValue.as.array;
 
     // 确保数组有足够容量
     if (array->count >= array->capacity)
@@ -251,8 +252,8 @@ Value pushNative(int argCount, Value *args)
     array->elements[array->count] = elementCopy;
     array->count++;
 
-    // 返回新的数组长度
-    return createNumber((double)array->count);
+    // 返回修改后的数组
+    return newArrayValue;
 }
 
 // 实现数组pop原生函数
