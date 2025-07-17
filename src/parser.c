@@ -107,24 +107,23 @@ const char *getParseErrorMsg(Parser *parser)
     return parser->errorMsg;
 }
 
-
 /**
  * 解析声明语句
- * 
+ *
  * 该函数负责解析各种类型的声明语句，包括：
  * - 函数声明 (function关键字)
  * - 变量声明 (var关键字)
  * - 常量声明 (const关键字)
- * 
+ *
  * 对于变量声明，支持以下特性：
  * - 多变量声明：var a, b, c;
  * - 类型注解：var a: int;
  * - 初始化表达式：var a = 10;
  * - 组合使用：var a, b: int = 5;
- * 
+ *
  * @param parser 解析器实例指针
  * @return 返回解析得到的声明语句指针，如果解析失败则返回NULL
- * 
+ *
  * @note 函数会动态分配内存来存储多个变量名，并在发生错误时自动释放内存
  * @note 如果不匹配任何声明类型，则调用statement()函数解析普通语句
  */
@@ -172,7 +171,7 @@ static Stmt *declaration(Parser *parser)
         // 处理类型注解
         TypeAnnotation typeAnnotation;
         typeAnnotation.kind = TYPE_SIMPLE;
-        typeAnnotation.as.simple = TYPE_ANY;  // 默认值
+        typeAnnotation.as.simple = TYPE_ANY; // 默认值
 
         if (match(parser, TOKEN_COLON))
         {
@@ -223,31 +222,30 @@ static Stmt *declaration(Parser *parser)
     return statement(parser);
 }
 
-
 /**
  * 解析函数声明语句
- * 
+ *
  * 此函数负责解析函数声明的完整语法，包括：
  * - 函数名
  * - 参数列表（支持可变参数，第一个参数必须使用 var 关键字）
  * - 参数类型注解（可选，默认为 TYPE_ANY）
  * - 返回类型注解（可选，默认为 TYPE_VOID）
  * - 函数体
- * 
+ *
  * 语法格式：
  * function_name(var param1: type1, param2: type2, ...): return_type {
  *     // 函数体
  * }
- * 
+ *
  * 参数规则：
  * - 最多支持 255 个参数
  * - 第一个参数必须使用 var 关键字声明
  * - 后续参数默认继承第一个参数的 var 状态
  * - 参数类型注解为可选，使用冒号分隔
- * 
+ *
  * @param parser 解析器实例指针
  * @return 成功时返回函数声明语句节点，失败时返回 NULL
- * 
+ *
  * @note 函数会自动管理内存分配，在错误情况下会释放已分配的内存
  * @note 支持动态扩展参数数组容量，初始容量为 8，不足时翻倍扩展
  */
@@ -389,7 +387,7 @@ static Stmt *functionDeclaration(Parser *parser)
     // 检查是否有返回类型注解（冒号后跟类型）
     TypeAnnotation returnTypeAnnotation;
     returnTypeAnnotation.kind = TYPE_SIMPLE;
-    returnTypeAnnotation.as.simple = TYPE_VOID;  // 默认返回类型为 void
+    returnTypeAnnotation.as.simple = TYPE_VOID; // 默认返回类型为 void
 
     if (match(parser, TOKEN_COLON))
     {
@@ -486,7 +484,7 @@ static Stmt *varDeclaration(Parser *parser)
     // 处理类型注解
     TypeAnnotation typeAnnotation;
     typeAnnotation.kind = TYPE_SIMPLE;
-    typeAnnotation.as.simple = TYPE_ANY;  // 默认值
+    typeAnnotation.as.simple = TYPE_ANY; // 默认值
 
     if (match(parser, TOKEN_COLON))
     {
@@ -544,7 +542,7 @@ static Stmt *constDeclaration(Parser *parser)
 
     TypeAnnotation typeAnnotation;
     typeAnnotation.kind = TYPE_SIMPLE;
-    typeAnnotation.as.simple = TYPE_ANY;  // 默认值
+    typeAnnotation.as.simple = TYPE_ANY; // 默认值
 
     // 处理类型注解
     if (match(parser, TOKEN_COLON))
@@ -601,6 +599,16 @@ static Stmt *statement(Parser *parser)
     if (match(parser, TOKEN_RETURN))
     {
         return returnStatement(parser);
+    }
+
+    if (match(parser, TOKEN_SWITCH))
+    {
+        return switchStatement(parser);
+    }
+
+    if (match(parser, TOKEN_BREAK))
+    {
+        return breakStatement(parser);
     }
 
     if (match(parser, TOKEN_LBRACE))
@@ -868,15 +876,41 @@ static Stmt *switchStatement(Parser *parser)
                 return NULL;
             }
 
-            Stmt *caseBody = statement(parser);
-            if (parser->hadError)
+            Stmt **caseStatements = NULL;
+            int stmtCapacity = 4;
+            int stmtCount = 0;
+            caseStatements = (Stmt **)malloc(stmtCapacity * sizeof(Stmt *));
+
+            // 解析直到遇到 case、default 或 }
+            while (!check(parser, TOKEN_CASE) && !check(parser, TOKEN_DEFAULT) && 
+                   !check(parser, TOKEN_RBRACE) && !isAtEnd(parser))
             {
-                freeExpr(discriminant);
-                freeExpr(caseValue);
-                free(cases);
-                return NULL;
+                if (stmtCount >= stmtCapacity)
+                {
+                    stmtCapacity *= 2;
+                    caseStatements = (Stmt **)realloc(caseStatements, stmtCapacity * sizeof(Stmt *));
+                }
+
+                Stmt *stmt = statement(parser);
+                if (parser->hadError)
+                {
+                    // 清理内存
+                    for (int i = 0; i < stmtCount; i++)
+                    {
+                        freeStmt(caseStatements[i]);
+                    }
+                    free(caseStatements);
+                    freeExpr(discriminant);
+                    freeExpr(caseValue);
+                    free(cases);
+                    return NULL;
+                }
+                caseStatements[stmtCount++] = stmt;
             }
 
+            // 创建块语句
+            Stmt *caseBody = createBlockStmt(caseStatements, stmtCount);
+            
             cases[caseCount].value = caseValue;
             cases[caseCount].body = caseBody;
             caseCount++;
@@ -891,13 +925,37 @@ static Stmt *switchStatement(Parser *parser)
                 return NULL;
             }
 
-            Stmt *defaultBody = statement(parser);
-            if (parser->hadError)
+            // 类似地处理 default 语句体
+            Stmt **defaultStatements = NULL;
+            int stmtCapacity = 4;
+            int stmtCount = 0;
+            defaultStatements = (Stmt **)malloc(stmtCapacity * sizeof(Stmt *));
+
+            while (!check(parser, TOKEN_CASE) && !check(parser, TOKEN_DEFAULT) && 
+                   !check(parser, TOKEN_RBRACE) && !isAtEnd(parser))
             {
-                freeExpr(discriminant);
-                free(cases);
-                return NULL;
+                if (stmtCount >= stmtCapacity)
+                {
+                    stmtCapacity *= 2;
+                    defaultStatements = (Stmt **)realloc(defaultStatements, stmtCapacity * sizeof(Stmt *));
+                }
+
+                Stmt *stmt = statement(parser);
+                if (parser->hadError)
+                {
+                    for (int i = 0; i < stmtCount; i++)
+                    {
+                        freeStmt(defaultStatements[i]);
+                    }
+                    free(defaultStatements);
+                    freeExpr(discriminant);
+                    free(cases);
+                    return NULL;
+                }
+                defaultStatements[stmtCount++] = stmt;
             }
+
+            Stmt *defaultBody = createBlockStmt(defaultStatements, stmtCount);
 
             cases[caseCount].value = NULL; // NULL 表示 default
             cases[caseCount].body = defaultBody;
@@ -944,10 +1002,10 @@ static Expr *expression(Parser *parser)
 static Expr *assignment(Parser *parser)
 {
     Expr *expr = logicalOr(parser);
-    
+
     if (expr == NULL)
     {
-        return NULL;  // 直接返回NULL，不设置错误消息
+        return NULL; // 直接返回NULL，不设置错误消息
     }
 
     if (match(parser, TOKEN_ASSIGN))
@@ -1045,25 +1103,96 @@ static Expr *factor(Parser *parser)
 // 解析一元表达式
 static Expr *unary(Parser *parser)
 {
-    if (match(parser, TOKEN_MINUS) || match(parser, TOKEN_PLUS))
+    // 检查类型转换：(type)expression
+    if (match(parser, TOKEN_LPAREN))
+    {
+        // 检查是否为类型转换
+        BaseType castType = TYPE_ANY;
+        bool isCast = false;
+
+        if (check(parser, TOKEN_INT))
+        {
+            castType = TYPE_INT;
+            isCast = true;
+        }
+        else if (check(parser, TOKEN_FLOAT_TYPE))
+        {
+            castType = TYPE_FLOAT;
+            isCast = true;
+        }
+        else if (check(parser, TOKEN_STRING_TYPE))
+        {
+            castType = TYPE_STRING;
+            isCast = true;
+        }
+        else if (check(parser, TOKEN_BOOL))
+        {
+            castType = TYPE_BOOL;
+            isCast = true;
+        }
+
+        if (isCast)
+        {
+            advance(parser); // 消费类型 token
+            consume(parser, TOKEN_RPAREN, "Expect ')' after cast type.");
+            if (parser->hadError)
+                return NULL;
+
+            Expr *expression = unary(parser);
+            if (parser->hadError)
+            {
+                if (expression)
+                    freeExpr(expression);
+                return NULL;
+            }
+
+            return createCastExpr(castType, expression);
+        }
+        else
+        {
+            // 不是类型转换，退回并按分组表达式处理
+            parser->current--; // 退回 '('
+            
+            // 继续处理其他一元表达式
+            if (match(parser, TOKEN_NOT) || match(parser, TOKEN_MINUS) || match(parser, TOKEN_PLUS))
+            {
+                TokenType operator = previous(parser).type;
+                Expr *right = unary(parser);
+                if (parser->hadError)
+                {
+                    if (right)
+                        freeExpr(right);
+                    return NULL;
+                }
+                return createUnaryExpr(operator, right);
+            }
+        }
+    }
+
+    if (match(parser, TOKEN_NOT) || match(parser, TOKEN_MINUS) || match(parser, TOKEN_PLUS))
     {
         TokenType operator = previous(parser).type;
         Expr *right = unary(parser);
+        if (parser->hadError)
+        {
+            if (right)
+                freeExpr(right);
+            return NULL;
+        }
         return createUnaryExpr(operator, right);
     }
 
-    if (match(parser, TOKEN_NOT))
-    {
-        TokenType operator = previous(parser).type;
-        Expr *right = unary(parser);
-        return createUnaryExpr(operator, right);
-    }
-
-    // 添加前缀递增/递减运算符支持
+    // 处理前缀运算符
     if (match(parser, TOKEN_PLUS_PLUS) || match(parser, TOKEN_MINUS_MINUS))
     {
         TokenType operator = previous(parser).type;
-        Expr *right = call(parser);
+        Expr *right = unary(parser);
+        if (parser->hadError)
+        {
+            if (right)
+                freeExpr(right);
+            return NULL;
+        }
 
         // 检查右操作数是否是变量
         if (right == NULL || right->type != EXPR_VARIABLE)
@@ -1074,7 +1203,6 @@ static Expr *unary(Parser *parser)
             return NULL;
         }
 
-        // 创建前缀表达式（可以复用后缀表达式结构，但需要标记为前缀）
         return createPrefixExpr(right, operator);
     }
 
@@ -1354,11 +1482,11 @@ static Token consume(Parser *parser, TokenType type, const char *message)
 static void synchronize(Parser *parser)
 {
     parser->hadError = 0; // 重置错误标志，尝试继续解析
-    
+
     // 如果已经在文件末尾，直接返回
     if (isAtEnd(parser))
         return;
-    
+
     advance(parser);
 
     while (!isAtEnd(parser))
@@ -1380,7 +1508,7 @@ static void synchronize(Parser *parser)
         case TOKEN_FOR:
         case TOKEN_RETURN:
         case TOKEN_LBRACE:
-        case TOKEN_RBRACE: 
+        case TOKEN_RBRACE:
         case TOKEN_RBRACKET:
             return;
         default:
@@ -1402,10 +1530,10 @@ static void error(Parser *parser, const char *message)
 static TypeAnnotation parseTypeAnnotation(Parser *parser)
 {
     TypeAnnotation type;
-    
+
     // 解析基本类型
     BaseType baseType = TYPE_ANY;
-    
+
     if (match(parser, TOKEN_INT))
     {
         baseType = TYPE_INT;
@@ -1433,7 +1561,7 @@ static TypeAnnotation parseTypeAnnotation(Parser *parser)
         type.as.simple = TYPE_ANY;
         return type;
     }
-    
+
     // 检查是否是数组类型
     if (match(parser, TOKEN_LBRACKET))
     {
@@ -1441,16 +1569,16 @@ static TypeAnnotation parseTypeAnnotation(Parser *parser)
         {
             error(parser, "Expected ']' after '['.");
         }
-        
+
         type.kind = TYPE_ARRAY;
         type.as.array.elementType = baseType;
-        type.as.array.size = NULL;  // 动态数组
+        type.as.array.size = NULL; // 动态数组
     }
     else
     {
         type.kind = TYPE_SIMPLE;
         type.as.simple = baseType;
     }
-    
+
     return type;
 }

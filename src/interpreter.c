@@ -20,6 +20,7 @@ static Value evaluatePrefix(Interpreter *interpreter, Expr *expr);
 static Value evaluateArrayLiteral(Interpreter *interpreter, Expr *expr);
 static Value evaluateArrayAccess(Interpreter *interpreter, Expr *expr);
 static Value evaluateArrayAssign(Interpreter *interpreter, Expr *expr);
+static Value evaluateCast(Interpreter *interpreter, Expr *expr);
 
 static void executeExpression(Interpreter *interpreter, Stmt *stmt);
 static void executeVar(Interpreter *interpreter, Stmt *stmt);
@@ -39,7 +40,7 @@ static void runtimeError(Interpreter *interpreter, const char *format, ...);
 
 typedef struct
 {
-    bool hasBreak;
+	bool hasBreak;
 } BreakStatus;
 
 typedef struct
@@ -142,11 +143,11 @@ void execute(Interpreter *interpreter, Stmt *stmt)
 		executeReturn(interpreter, stmt);
 		break;
 	case STMT_SWITCH:
-        executeSwitch(interpreter, stmt);
-        break;
-    case STMT_BREAK:
-        executeBreak(interpreter, stmt);
-        break;
+		executeSwitch(interpreter, stmt);
+		break;
+	case STMT_BREAK:
+		executeBreak(interpreter, stmt);
+		break;
 	}
 }
 
@@ -185,6 +186,8 @@ Value evaluate(Interpreter *interpreter, Expr *expr)
 		return evaluateArrayAccess(interpreter, expr);
 	case EXPR_ARRAY_ASSIGN:
 		return evaluateArrayAssign(interpreter, expr);
+	case EXPR_CAST:
+		return evaluateCast(interpreter, expr);
 	}
 
 	return createNull();
@@ -963,6 +966,196 @@ static Value evaluateArrayAssign(Interpreter *interpreter, Expr *expr)
 	}
 }
 
+static Value evaluateCast(Interpreter *interpreter, Expr *expr)
+{
+    Value value = evaluate(interpreter, expr->as.cast.expression);
+    if (interpreter->hadError)
+    {
+        return createNull();
+    }
+
+    BaseType targetType = expr->as.cast.targetType;
+    
+    // 执行类型转换
+    switch (targetType)
+    {
+    case TYPE_INT:
+    {
+        switch (value.type)
+        {
+        case VAL_NUMBER:
+            // 已经是数字，直接返回整数部分
+            {
+                int intValue = (int)value.as.number;
+                freeValue(value);
+                return createNumber((double)intValue);
+            }
+        case VAL_STRING:
+            // 字符串转整数
+            if (value.as.string != NULL)
+            {
+                char *endptr;
+                long intValue = strtol(value.as.string, &endptr, 10);
+                
+                // 检查转换是否成功
+                if (endptr == value.as.string || *endptr != '\0')
+                {
+                    freeValue(value);
+                    runtimeError(interpreter, "Cannot convert string '%s' to int", value.as.string);
+                    return createNull();
+                }
+                
+                freeValue(value);
+                return createNumber((double)intValue);
+            }
+            else
+            {
+                freeValue(value);
+                runtimeError(interpreter, "Cannot convert null string to int");
+                return createNull();
+            }
+        case VAL_BOOL:
+            // 布尔转整数：true -> 1, false -> 0
+            {
+                int intValue = value.as.boolean ? 1 : 0;
+                freeValue(value);
+                return createNumber((double)intValue);
+            }
+        default:
+            freeValue(value);
+            runtimeError(interpreter, "Cannot convert to int");
+            return createNull();
+        }
+    }
+    
+    case TYPE_FLOAT:
+    {
+        switch (value.type)
+        {
+        case VAL_NUMBER:
+            // 已经是数字，直接返回
+            return value;
+        case VAL_STRING:
+            // 字符串转浮点数
+            if (value.as.string != NULL)
+            {
+                char *endptr;
+                double floatValue = strtod(value.as.string, &endptr);
+                
+                // 检查转换是否成功
+                if (endptr == value.as.string || *endptr != '\0')
+                {
+                    freeValue(value);
+                    runtimeError(interpreter, "Cannot convert string '%s' to float", value.as.string);
+                    return createNull();
+                }
+                
+                freeValue(value);
+                return createNumber(floatValue);
+            }
+            else
+            {
+                freeValue(value);
+                runtimeError(interpreter, "Cannot convert null string to float");
+                return createNull();
+            }
+        case VAL_BOOL:
+            // 布尔转浮点数：true -> 1.0, false -> 0.0
+            {
+                double floatValue = value.as.boolean ? 1.0 : 0.0;
+                freeValue(value);
+                return createNumber(floatValue);
+            }
+        default:
+            freeValue(value);
+            runtimeError(interpreter, "Cannot convert to float");
+            return createNull();
+        }
+    }
+    
+    case TYPE_STRING:
+    {
+        char buffer[64];
+        switch (value.type)
+        {
+        case VAL_NUMBER:
+            // 数字转字符串
+            if (value.as.number == (int)value.as.number)
+            {
+                // 整数
+                snprintf(buffer, sizeof(buffer), "%d", (int)value.as.number);
+            }
+            else
+            {
+                // 浮点数
+                snprintf(buffer, sizeof(buffer), "%g", value.as.number);
+            }
+            freeValue(value);
+            return createString(buffer);
+            
+        case VAL_BOOL:
+            // 布尔转字符串
+            freeValue(value);
+            return createString(value.as.boolean ? "true" : "false");
+            
+        case VAL_STRING:
+            // 已经是字符串，直接返回
+            return value;
+            
+        case VAL_NULL:
+            freeValue(value);
+            return createString("null");
+            
+        default:
+            freeValue(value);
+            runtimeError(interpreter, "Cannot convert to string");
+            return createNull();
+        }
+    }
+    
+    case TYPE_BOOL:
+    {
+        switch (value.type)
+        {
+        case VAL_BOOL:
+            // 已经是布尔值，直接返回
+            return value;
+            
+        case VAL_NUMBER:
+            // 数字转布尔：0 -> false, 其他 -> true
+            {
+                bool boolValue = value.as.number != 0.0;
+                freeValue(value);
+                return createBool(boolValue);
+            }
+            
+        case VAL_STRING:
+            // 字符串转布尔：空字符串 -> false, 其他 -> true
+            {
+                bool boolValue = (value.as.string != NULL && strlen(value.as.string) > 0);
+                freeValue(value);
+                return createBool(boolValue);
+            }
+            
+        case VAL_NULL:
+            // null -> false
+            freeValue(value);
+            return createBool(false);
+            
+        default:
+            freeValue(value);
+            runtimeError(interpreter, "Cannot convert to bool");
+            return createNull();
+        }
+    }
+    
+    default:
+        freeValue(value);
+        runtimeError(interpreter, "Unsupported cast target type");
+        return createNull();
+    }
+}
+
 // 实现条件语句执行
 static void executeIf(Interpreter *interpreter, Stmt *stmt)
 {
@@ -1277,67 +1470,67 @@ static void executeReturn(Interpreter *interpreter, Stmt *stmt)
 
 static void executeSwitch(Interpreter *interpreter, Stmt *stmt)
 {
-    Value discriminant = evaluate(interpreter, stmt->as.switchStmt.discriminant);
-    if (interpreter->hadError)
-    {
-        return;
-    }
+	Value discriminant = evaluate(interpreter, stmt->as.switchStmt.discriminant);
+	if (interpreter->hadError)
+	{
+		return;
+	}
 
-    bool matched = false;
-    bool fallthrough = false;
-    
-    // 重置 break 状态
-    breakStatus.hasBreak = false;
+	bool matched = false;
+	bool fallthrough = false;
 
-    for (int i = 0; i < stmt->as.switchStmt.caseCount; i++)
-    {
-        CaseStmt *caseStmt = &stmt->as.switchStmt.cases[i];
-        
-        if (caseStmt->value == NULL) // default case
-        {
-            if (!matched)
-            {
-                matched = true;
-                fallthrough = true;
-            }
-        }
-        else
-        {
-            Value caseValue = evaluate(interpreter, caseStmt->value);
-            if (interpreter->hadError)
-            {
-                freeValue(discriminant);
-                return;
-            }
+	// 重置 break 状态
+	breakStatus.hasBreak = false;
 
-            if (!matched && valuesEqual(discriminant, caseValue))
-            {
-                matched = true;
-                fallthrough = true;
-            }
-            
-            freeValue(caseValue);
-        }
+	for (int i = 0; i < stmt->as.switchStmt.caseCount; i++)
+	{
+		CaseStmt *caseStmt = &stmt->as.switchStmt.cases[i];
 
-        if (fallthrough)
-        {
-            execute(interpreter, caseStmt->body);
-            
-            if (breakStatus.hasBreak || interpreter->hadError)
-            {
-                break;
-            }
-        }
-    }
+		if (caseStmt->value == NULL) // default case
+		{
+			if (!matched)
+			{
+				matched = true;
+				fallthrough = true;
+			}
+		}
+		else
+		{
+			Value caseValue = evaluate(interpreter, caseStmt->value);
+			if (interpreter->hadError)
+			{
+				freeValue(discriminant);
+				return;
+			}
 
-    freeValue(discriminant);
-    breakStatus.hasBreak = false; // 重置状态
+			if (!matched && valuesEqual(discriminant, caseValue))
+			{
+				matched = true;
+				fallthrough = true;
+			}
+
+			freeValue(caseValue);
+		}
+
+		if (fallthrough)
+		{
+			execute(interpreter, caseStmt->body);
+
+			if (breakStatus.hasBreak || interpreter->hadError)
+			{
+				break;
+			}
+		}
+	}
+
+	freeValue(discriminant);
+	breakStatus.hasBreak = false; // 重置状态
 }
 
 // 执行 break 语句
 static void executeBreak(Interpreter *interpreter, Stmt *stmt)
 {
-    breakStatus.hasBreak = true;
+	breakStatus.hasBreak = true;
 }
 /**
  * 调用函数并执行函数体

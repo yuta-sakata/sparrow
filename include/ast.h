@@ -24,8 +24,7 @@ typedef enum
     EXPR_ARRAY_LITERAL, // 数组字面量
     EXPR_ARRAY_ACCESS,  // 数组访问
     EXPR_ARRAY_ASSIGN,  // 数组赋值
-    STMT_SWITCH,        // switch语句
-    STMT_BREAK,         // break语句
+    EXPR_CAST,          // 类型转换表达式
 } ExprType;
 
 // 语句类型
@@ -41,28 +40,9 @@ typedef enum
     STMT_FOR,        // for循环
     STMT_FUNCTION,   // 函数声明
     STMT_RETURN,     // return语句
+    STMT_SWITCH,     // switch语句
+    STMT_BREAK,      // break语句
 } StmtType;
-
-// case 语句结构
-typedef struct
-{
-    Expr *value; // case 值表达式，NULL 表示 default
-    Stmt *body;  // case 体
-} CaseStmt;
-
-// switch 语句结构
-typedef struct
-{
-    Expr *discriminant; // switch 表达式
-    CaseStmt *cases;    // case 数组
-    int caseCount;      // case 数量
-} SwitchStmt;
-
-// break 语句结构
-typedef struct
-{
-    Token keyword; // break 关键字
-} BreakStmt;
 
 // 常量声明语句结构
 typedef struct
@@ -166,24 +146,32 @@ typedef struct
     Expr *value; // 赋值的值
 } ArrayAssignExpr;
 
+// 类型转换表达式
+typedef struct
+{
+    BaseType targetType; // 目标类型
+    Expr *expression;    // 被转换的表达式
+} CastExpr;
+
 // 表达式结构
 typedef struct Expr
 {
-    ExprType type;
+    ExprType type; // 表达式类型
     union
     {
-        BinaryExpr binary;
-        UnaryExpr unary;
-        LiteralExpr literal;
-        PostfixExpr postfix;
-        PrefixExpr prefix;
-        GroupingExpr grouping;
-        VariableExpr variable;
-        AssignExpr assign;
-        CallExpr call;
-        ArrayLiteralExpr arrayLiteral;
-        ArrayAccessExpr arrayAccess;
-        ArrayAssignExpr arrayAssign;
+        BinaryExpr binary;             // 二元表达式
+        UnaryExpr unary;               // 一元表达式
+        LiteralExpr literal;           // 字面量表达式
+        PostfixExpr postfix;           // 后缀表达式
+        PrefixExpr prefix;             // 前缀表达式
+        GroupingExpr grouping;         // 分组表达式
+        VariableExpr variable;         // 变量引用
+        AssignExpr assign;             // 赋值表达式
+        CallExpr call;                 // 函数调用
+        ArrayLiteralExpr arrayLiteral; // 数组字面量表达式
+        ArrayAccessExpr arrayAccess;   // 数组访问表达式
+        ArrayAssignExpr arrayAssign;   // 数组赋值表达式
+        CastExpr cast;                 // 类型转换表达式
     } as;
 } Expr;
 
@@ -251,6 +239,27 @@ typedef struct
     Expr *value;   // 可能为NULL
 } ReturnStmt;
 
+// case 语句结构
+typedef struct
+{
+    Expr *value; // case 值表达式，NULL 表示 default
+    Stmt *body;  // case 体
+} CaseStmt;
+
+// switch 语句结构
+typedef struct
+{
+    Expr *discriminant; // switch 表达式
+    CaseStmt *cases;    // case 数组
+    int caseCount;      // case 数量
+} SwitchStmt;
+
+// break 语句结构
+typedef struct
+{
+    Token keyword; // break 关键字
+} BreakStmt;
+
 // 语句结构
 struct Stmt
 {
@@ -286,6 +295,7 @@ Expr *copyExpr(Expr *expr);
 Expr *createArrayLiteralExpr(Expr **elements, int count);
 Expr *createArrayAccessExpr(Expr *array, Expr *index);
 Expr *createArrayAssignExpr(Expr *array, Expr *index, Expr *value);
+Expr *createCastExpr(BaseType targetType, Expr *expression);
 
 // 创建语句节点的函数
 Stmt *createExpressionStmt(Expr *expression);

@@ -502,6 +502,16 @@ Expr *copyExpr(Expr *expr)
         return createArrayAssignExpr(arrayCopy, indexCopy, valueCopy);
     }
 
+    case EXPR_CAST:
+    {
+        Expr *exprCopy = copyExpr(expr->as.cast.expression);
+        if (exprCopy == NULL)
+        {
+            return NULL;
+        }
+        return createCastExpr(expr->as.cast.targetType, exprCopy);
+    }
+
     default:
         fprintf(stderr, "未知的表达式类型\n");
         return NULL;
@@ -545,6 +555,19 @@ Expr *createArrayAssignExpr(Expr *array, Expr *index, Expr *value)
     expr->as.arrayAssign.array = array;
     expr->as.arrayAssign.index = index;
     expr->as.arrayAssign.value = value;
+    return expr;
+}
+
+// 创建类型转换表达式
+Expr *createCastExpr(BaseType targetType, Expr *expression)
+{
+    Expr *expr = (Expr *)malloc(sizeof(Expr));
+    if (expr == NULL)
+        return NULL;
+
+    expr->type = EXPR_CAST;
+    expr->as.cast.targetType = targetType;
+    expr->as.cast.expression = expression;
     return expr;
 }
 
@@ -600,6 +623,12 @@ void freeExpr(Expr *expr)
         freeExpr(expr->as.arrayAssign.array);
         freeExpr(expr->as.arrayAssign.index);
         freeExpr(expr->as.arrayAssign.value);
+        break;
+    case EXPR_CAST:
+        if (expr->as.cast.expression != NULL)
+        {
+            freeExpr(expr->as.cast.expression);
+        }
         break;
     case EXPR_LITERAL:
     case EXPR_VARIABLE:
