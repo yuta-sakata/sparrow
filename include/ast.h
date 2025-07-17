@@ -47,9 +47,9 @@ typedef enum
 // 常量声明语句结构
 typedef struct
 {
-    Token name;
-    TypeAnnotation type;
-    Expr *initializer; // 常量必须有初始值
+    Token name;          // 常量名
+    TypeAnnotation type; // 类型信息
+    Expr *initializer;   // 常量必须有初始值
 } ConstStmt;
 
 // 多变量声明语句结构
@@ -178,7 +178,7 @@ typedef struct Expr
 // 表达式语句
 typedef struct
 {
-    Expr *expression;
+    Expr *expression; // 表达式
 } ExpressionStmt;
 
 // 变量声明
@@ -186,50 +186,50 @@ typedef struct
 {
     Token name;
     TypeAnnotation type; // 类型信息
-    Expr *initializer;
+    Expr *initializer;   // 初始值，可以为NULL
 } VarStmt;
 
 // 代码块
 typedef struct
 {
-    Stmt **statements;
-    int count;
+    Stmt **statements; // 语句数组
+    int count;         // 语句数量
 } BlockStmt;
 
 // if语句
 typedef struct
 {
-    Expr *condition;
-    Stmt *thenBranch;
-    Stmt *elseBranch; // 可能为NULL
+    Expr *condition;  // 条件表达式
+    Stmt *thenBranch; // 真分支
+    Stmt *elseBranch; // 假分支，可以为NULL
 } IfStmt;
 
 // while循环
 typedef struct
 {
-    Expr *condition;
-    Stmt *body;
+    Expr *condition; // 条件表达式
+    Stmt *body;      // 循环体
 } WhileStmt;
 
 // for循环
 typedef struct
 {
-    Stmt *initializer; // 可能为NULL
-    Expr *condition;   // 可能为NULL
-    Expr *increment;   // 可能为NULL
-    Stmt *body;
+    Stmt *initializer; // 循环初始化语句，可以为NULL
+    Expr *condition;   // 循环条件，可以为NULL
+    Expr *increment;   // 循环增量表达式，可以为NULL
+    Stmt *body;        // 循环体
 } ForStmt;
 
 // 函数声明
 typedef struct
 {
-    Token name;
-    Token *params;
-    bool *paramHasVar;
-    TypeAnnotation *paramTypes;
-    TypeAnnotation returnType;
-    int paramCount;
-    struct Stmt *body;
+    Token name;                 // 函数名
+    Token *params;              // 参数名数组
+    bool *paramHasVar;          // 参数是否为可变参数
+    TypeAnnotation *paramTypes; // 参数类型数组
+    TypeAnnotation returnType;  // 返回类型
+    int paramCount;             // 参数数量
+    struct Stmt *body;          // 函数体
 } FunctionStmt;
 
 // return语句
@@ -266,18 +266,18 @@ struct Stmt
     StmtType type;
     union
     {
-        ExpressionStmt expression;
-        VarStmt var;
-        ConstStmt constStmt;
-        MultiVarStmt multiVar;
-        BlockStmt block;
-        IfStmt ifStmt;
-        WhileStmt whileLoop;
-        ForStmt forLoop;
-        FunctionStmt function;
-        ReturnStmt returnStmt;
-        SwitchStmt switchStmt;
-        BreakStmt breakStmt;
+        ExpressionStmt expression; // 表达式语句
+        VarStmt var;               // 变量声明
+        ConstStmt constStmt;       // 常量声明
+        MultiVarStmt multiVar;     // 多变量声明
+        BlockStmt block;           // 代码块
+        IfStmt ifStmt;             // if语句
+        WhileStmt whileLoop;       // while循环
+        ForStmt forLoop;           // for循环
+        FunctionStmt function;     // 函数声明
+        ReturnStmt returnStmt;     // return语句
+        SwitchStmt switchStmt;     // switch语句
+        BreakStmt breakStmt;       // break语句
     } as;
 };
 

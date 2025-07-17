@@ -42,7 +42,7 @@ void initEnvironment(Environment *env, Environment *enclosing)
     env->names = (char **)malloc(sizeof(char *) * env->capacity);
     if (env->names == NULL)
     {
-        fprintf(stderr, "Memory allocation failed\n");
+        fprintf(stderr, "内存分配失败\n");
         exit(1);
     }
 
@@ -50,7 +50,7 @@ void initEnvironment(Environment *env, Environment *enclosing)
     if (env->values == NULL)
     {
         free(env->names);
-        fprintf(stderr, "Memory allocation failed\n");
+        fprintf(stderr, "内存分配失败\n");
         exit(1);
     }
 
@@ -60,7 +60,7 @@ void initEnvironment(Environment *env, Environment *enclosing)
     {
         free(env->names);
         free(env->values);
-        fprintf(stderr, "Memory allocation failed\n");
+        fprintf(stderr, "内存分配失败\n");
         exit(1);
     }
 

@@ -256,6 +256,31 @@ Stmt *createBreakStmt(Token keyword)
     return stmt;
 }
 
+/**
+ * 深度复制表达式节点
+ *
+ * 该函数递归地复制一个表达式及其所有子表达式，包括：
+ * - 二元表达式：复制左右操作数
+ * - 一元表达式：复制操作数
+ * - 字面量表达式：深度复制Token及其字符串内容
+ * - 分组表达式：复制内部表达式
+ * - 变量表达式：复制变量名Token
+ * - 赋值表达式：复制变量名和值表达式
+ * - 函数调用表达式：复制被调用者、参数列表和括号Token
+ * - 后缀表达式：复制操作数
+ * - 前缀表达式：复制操作数
+ * - 数组字面量：复制所有元素表达式
+ * - 数组访问：复制数组和索引表达式
+ * - 数组赋值：复制数组、索引和值表达式
+ * - 类型转换：复制目标类型和被转换的表达式
+ *
+ * @param expr 要复制的表达式指针，可以为NULL
+ * @return 复制后的新表达式指针，如果输入为NULL则返回NULL，内存分配失败返回NULL
+ *
+ * @note 该函数会为字符串内容（如Token的lexeme和stringValue）分配新的内存
+ * @note 复制失败时会自动清理已分配的内存以防止内存泄漏
+ * @note 调用者负责释放返回的表达式内存
+ */
 Expr *copyExpr(Expr *expr)
 {
     if (expr == NULL)
@@ -263,19 +288,23 @@ Expr *copyExpr(Expr *expr)
 
     switch (expr->type)
     {
+
+    // 处理二元表达式
     case EXPR_BINARY:
     {
-        Expr *leftCopy = copyExpr(expr->as.binary.left);
-        Expr *rightCopy = copyExpr(expr->as.binary.right);
-        return createBinaryExpr(leftCopy, expr->as.binary.op, rightCopy);
+        Expr *leftCopy = copyExpr(expr->as.binary.left);                  // 递归复制左操作数
+        Expr *rightCopy = copyExpr(expr->as.binary.right);                // 递归复制右操作数
+        return createBinaryExpr(leftCopy, expr->as.binary.op, rightCopy); // 创建新的二元表达式
     }
 
+    // 处理一元表达式
     case EXPR_UNARY:
     {
-        Expr *rightCopy = copyExpr(expr->as.unary.right);
-        return createUnaryExpr(expr->as.unary.op, rightCopy);
+        Expr *rightCopy = copyExpr(expr->as.unary.right);     // 递归复制右操作数
+        return createUnaryExpr(expr->as.unary.op, rightCopy); // 创建新的一元表达式
     }
 
+    // 处理字面量表达式
     case EXPR_LITERAL:
     {
         // 复制Token
@@ -284,8 +313,8 @@ Expr *copyExpr(Expr *expr)
         // 如果是字符串类型，需要手动深度复制字符串内容
         if (tokenCopy.type == TOKEN_STRING && tokenCopy.value.stringValue != NULL)
         {
-            size_t strLen = strlen(tokenCopy.value.stringValue);
-            char *strCopy = (char *)malloc(strLen + 1); // +1 for null terminator
+            size_t strLen = strlen(tokenCopy.value.stringValue); // 获取字符串长度
+            char *strCopy = (char *)malloc(strLen + 1);          // +1 确保字符串以null结尾
             if (strCopy == NULL)
             {
                 fprintf(stderr, "内存分配失败\n");
@@ -318,12 +347,14 @@ Expr *copyExpr(Expr *expr)
         return createLiteralExpr(tokenCopy);
     }
 
+    // 处理分组表达式
     case EXPR_GROUPING:
     {
-        Expr *exprCopy = copyExpr(expr->as.grouping.expression);
-        return createGroupingExpr(exprCopy);
+        Expr *exprCopy = copyExpr(expr->as.grouping.expression); // 递归复制被分组的表达式
+        return createGroupingExpr(exprCopy);                     // 创建新的分组表达式
     }
 
+    // 处理变量表达式
     case EXPR_VARIABLE:
     {
         // 复制Token
@@ -345,6 +376,7 @@ Expr *copyExpr(Expr *expr)
         return createVariableExpr(nameCopy);
     }
 
+    // 处理赋值表达式
     case EXPR_ASSIGN:
     {
         // 复制Token
@@ -368,6 +400,7 @@ Expr *copyExpr(Expr *expr)
         return createAssignExpr(nameCopy, valueCopy);
     }
 
+    // 处理函数调用表达式
     case EXPR_CALL:
     {
         Expr *calleeCopy = copyExpr(expr->as.call.callee);
@@ -429,6 +462,7 @@ Expr *copyExpr(Expr *expr)
         return createCallExpr(calleeCopy, parenCopy, argsCopy, expr->as.call.argCount);
     }
 
+    // 处理后缀表达式
     case EXPR_POSTFIX:
     {
         Expr *operandCopy = copyExpr(expr->as.postfix.operand);
@@ -484,11 +518,12 @@ Expr *copyExpr(Expr *expr)
         return createArrayAccessExpr(arrayCopy, indexCopy);
     }
 
+    // 数组赋值
     case EXPR_ARRAY_ASSIGN:
     {
-        Expr *arrayCopy = copyExpr(expr->as.arrayAssign.array);
-        Expr *indexCopy = copyExpr(expr->as.arrayAssign.index);
-        Expr *valueCopy = copyExpr(expr->as.arrayAssign.value);
+        Expr *arrayCopy = copyExpr(expr->as.arrayAssign.array); // 递归复制数组表达式
+        Expr *indexCopy = copyExpr(expr->as.arrayAssign.index); // 递归复制索引表达式
+        Expr *valueCopy = copyExpr(expr->as.arrayAssign.value); // 递归复制赋值表达式
         if (arrayCopy == NULL || indexCopy == NULL || valueCopy == NULL)
         {
             if (arrayCopy)
@@ -518,47 +553,99 @@ Expr *copyExpr(Expr *expr)
     }
 }
 
-// 创建数组字面量表达式
+/**
+ * 创建数组字面量表达式节点
+ *
+ * 此函数分配内存并初始化一个新的数组字面量表达式节点。
+ * 数组字面量表达式用于表示源代码中的数组初始化语法，
+ * 如 [1, 2, 3] 或 ["hello", "world"]。
+ *
+ * @param elements 指向表达式指针数组的指针，包含数组中的所有元素表达式
+ * @param elementCount 数组中元素的数量
+ * @return 成功时返回指向新创建的 Expr 结构体的指针，内存分配失败时返回 NULL
+ *
+ * @note 调用者负责管理 elements 数组的内存生命周期
+ * @note 返回的表达式节点需要在使用完毕后通过适当的释放函数进行内存清理
+ */
 Expr *createArrayLiteralExpr(Expr **elements, int elementCount)
 {
-    Expr *expr = (Expr *)malloc(sizeof(Expr));
-    if (expr == NULL)
+    Expr *expr = (Expr *)malloc(sizeof(Expr)); // 分配内存
+    if (expr == NULL)                          // 检查内存分配是否成功
         return NULL;
 
-    expr->type = EXPR_ARRAY_LITERAL;
-    expr->as.arrayLiteral.elements = elements;
-    expr->as.arrayLiteral.elementCount = elementCount;
+    expr->type = EXPR_ARRAY_LITERAL;                   // 设置表达式类型为数组字面量
+    expr->as.arrayLiteral.elements = elements;         // 设置数组元素指针
+    expr->as.arrayLiteral.elementCount = elementCount; // 设置元素数量
     return expr;
 }
 
-// 创建数组访问表达式
+/**
+ * 创建数组访问表达式节点
+ *
+ * 该函数用于在抽象语法树中创建一个表示数组访问操作的表达式节点，
+ * 例如 arr[index] 这样的表达式。
+ *
+ * @param array 指向数组表达式的指针，表示被访问的数组
+ * @param index 指向索引表达式的指针，表示访问数组的索引
+ * @return 成功时返回指向新创建的数组访问表达式节点的指针，
+ *         内存分配失败时返回 NULL
+ *
+ * @note 调用者需要确保传入的 array 和 index 参数有效
+ * @note 返回的表达式节点需要在适当时机释放内存以避免内存泄漏
+ */
 Expr *createArrayAccessExpr(Expr *array, Expr *index)
 {
-    Expr *expr = (Expr *)malloc(sizeof(Expr));
+    Expr *expr = (Expr *)malloc(sizeof(Expr)); // 分配内存
     if (expr == NULL)
         return NULL;
 
-    expr->type = EXPR_ARRAY_ACCESS;
-    expr->as.arrayAccess.array = array;
-    expr->as.arrayAccess.index = index;
+    expr->type = EXPR_ARRAY_ACCESS;     // 设置表达式类型为数组访问
+    expr->as.arrayAccess.array = array; // 设置数组表达式
+    expr->as.arrayAccess.index = index; // 设置索引表达式
     return expr;
 }
 
-// 创建数组赋值表达式
+/**
+ * 创建数组赋值表达式节点
+ *
+ * 此函数分配内存并初始化一个新的表达式节点，用于表示数组赋值操作（如 array[index] = value）。
+ *
+ * @param array 指向数组表达式的指针，表示被赋值的数组
+ * @param index 指向索引表达式的指针，表示数组的索引位置
+ * @param value 指向值表达式的指针，表示要赋给数组元素的值
+ *
+ * @return 成功时返回指向新创建的表达式节点的指针；
+ *         内存分配失败时返回 NULL
+ *
+ * @note 调用者负责释放返回的表达式节点及其所有子表达式的内存
+ * @note 传入的 array、index 和 value 参数将被直接存储，不会进行深拷贝
+ */
 Expr *createArrayAssignExpr(Expr *array, Expr *index, Expr *value)
 {
-    Expr *expr = (Expr *)malloc(sizeof(Expr));
+    Expr *expr = (Expr *)malloc(sizeof(Expr)); // 分配内存
     if (expr == NULL)
         return NULL;
 
-    expr->type = EXPR_ARRAY_ASSIGN;
-    expr->as.arrayAssign.array = array;
-    expr->as.arrayAssign.index = index;
-    expr->as.arrayAssign.value = value;
+    expr->type = EXPR_ARRAY_ASSIGN;     // 设置表达式类型为数组赋值
+    expr->as.arrayAssign.array = array; // 设置数组表达式
+    expr->as.arrayAssign.index = index; // 设置索引表达式
+    expr->as.arrayAssign.value = value; // 设置赋值表达式
     return expr;
 }
 
-// 创建类型转换表达式
+/**
+ * 创建类型转换表达式节点
+ *
+ * 此函数分配内存并初始化一个新的类型转换表达式节点，用于表示将一个表达式
+ * 转换为指定的目标类型。
+ *
+ * @param targetType 目标类型，表达式将被转换为此类型
+ * @param expression 要进行类型转换的源表达式
+ * @return 成功时返回指向新创建的表达式节点的指针，内存分配失败时返回 NULL
+ *
+ * @note 调用者负责管理返回的表达式节点的内存，使用完毕后应调用相应的释放函数
+ * @note 如果内存分配失败，函数返回 NULL，调用者应检查返回值
+ */
 Expr *createCastExpr(BaseType targetType, Expr *expression)
 {
     Expr *expr = (Expr *)malloc(sizeof(Expr));
@@ -571,7 +658,28 @@ Expr *createCastExpr(BaseType targetType, Expr *expression)
     return expr;
 }
 
-// 释放表达式节点内存
+/**
+ * 释放表达式节点及其所有子节点的内存
+ *
+ * 该函数递归地释放表达式树中的所有节点，包括：
+ * - 二元表达式：释放左右操作数
+ * - 一元表达式：释放操作数
+ * - 分组表达式：释放内部表达式
+ * - 赋值表达式：释放赋值值
+ * - 函数调用：释放被调用者和所有参数
+ * - 前缀/后缀表达式：释放操作数
+ * - 数组字面量：释放所有元素
+ * - 数组访问：释放数组和索引表达式
+ * - 数组赋值：释放数组、索引和赋值值
+ * - 类型转换：释放被转换的表达式
+ * - 字面量和变量：无需额外释放
+ *
+ * @param expr 要释放的表达式节点指针，可以为NULL（安全处理）
+ *
+ * @note 该函数会递归释放整个表达式树，确保没有内存泄漏
+ * @note 对NULL指针调用是安全的
+ * @warning 释放后不应再使用该表达式指针
+ */
 void freeExpr(Expr *expr)
 {
     if (expr == NULL)

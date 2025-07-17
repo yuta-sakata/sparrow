@@ -8,35 +8,35 @@
 #include <math.h>
 
 // 静态函数声明
-static Value evaluateUnary(Interpreter *interpreter, Expr *expr);
-static Value evaluateBinary(Interpreter *interpreter, Expr *expr);
-static Value evaluateCall(Interpreter *interpreter, Expr *expr);
-static Value evaluateLiteral(Expr *expr);
-static Value evaluateGrouping(Interpreter *interpreter, Expr *expr);
-static Value evaluateVariable(Interpreter *interpreter, Expr *expr);
-static Value evaluateAssign(Interpreter *interpreter, Expr *expr);
-static Value evaluatePostfix(Interpreter *interpreter, Expr *expr);
-static Value evaluatePrefix(Interpreter *interpreter, Expr *expr);
-static Value evaluateArrayLiteral(Interpreter *interpreter, Expr *expr);
-static Value evaluateArrayAccess(Interpreter *interpreter, Expr *expr);
-static Value evaluateArrayAssign(Interpreter *interpreter, Expr *expr);
-static Value evaluateCast(Interpreter *interpreter, Expr *expr);
+static Value evaluateUnary(Interpreter *interpreter, Expr *expr);		 // 处理一元运算符
+static Value evaluateBinary(Interpreter *interpreter, Expr *expr);		 // 处理二元运算符
+static Value evaluateCall(Interpreter *interpreter, Expr *expr);		 // 处理函数调用
+static Value evaluateLiteral(Expr *expr);								 // 处理字面量
+static Value evaluateGrouping(Interpreter *interpreter, Expr *expr);	 // 处理分组表达式
+static Value evaluateVariable(Interpreter *interpreter, Expr *expr);	 // 处理变量
+static Value evaluateAssign(Interpreter *interpreter, Expr *expr);		 // 处理赋值表达式
+static Value evaluatePostfix(Interpreter *interpreter, Expr *expr);		 // 处理后缀表达式
+static Value evaluatePrefix(Interpreter *interpreter, Expr *expr);		 // 处理前缀表达式
+static Value evaluateArrayLiteral(Interpreter *interpreter, Expr *expr); // 处理数组字面量
+static Value evaluateArrayAccess(Interpreter *interpreter, Expr *expr);	 // 处理数组访问
+static Value evaluateArrayAssign(Interpreter *interpreter, Expr *expr);	 // 处理数组赋值
+static Value evaluateCast(Interpreter *interpreter, Expr *expr);		 // 处理类型转换
 
-static void executeExpression(Interpreter *interpreter, Stmt *stmt);
-static void executeVar(Interpreter *interpreter, Stmt *stmt);
-static void executeConst(Interpreter *interpreter, Stmt *stmt);
-static void executeMultiVar(Interpreter *interpreter, Stmt *stmt);
-static void executeBlock(Interpreter *interpreter, Stmt **statements, int count, Environment *environment);
-static void executeIf(Interpreter *interpreter, Stmt *stmt);
-static void executeWhile(Interpreter *interpreter, Stmt *stmt);
-static void executeFor(Interpreter *interpreter, Stmt *stmt);
-static void executeFunction(Interpreter *interpreter, Stmt *stmt);
-static void executeReturn(Interpreter *interpreter, Stmt *stmt);
-static void executeSwitch(Interpreter *interpreter, Stmt *stmt);
-static void executeBreak(Interpreter *interpreter, Stmt *stmt);
+static void executeExpression(Interpreter *interpreter, Stmt *stmt);										// 处理表达式语句
+static void executeVar(Interpreter *interpreter, Stmt *stmt);												// 处理变量声明
+static void executeConst(Interpreter *interpreter, Stmt *stmt);												// 处理常量声明
+static void executeMultiVar(Interpreter *interpreter, Stmt *stmt);											// 处理多变量声明
+static void executeBlock(Interpreter *interpreter, Stmt **statements, int count, Environment *environment); // 处理代码块
+static void executeIf(Interpreter *interpreter, Stmt *stmt);												// 处理 if 语句
+static void executeWhile(Interpreter *interpreter, Stmt *stmt);												// 处理 while 循环
+static void executeFor(Interpreter *interpreter, Stmt *stmt);												// 处理 for 循环
+static void executeFunction(Interpreter *interpreter, Stmt *stmt);											// 处理函数定义
+static void executeReturn(Interpreter *interpreter, Stmt *stmt);											// 处理 return 语句
+static void executeSwitch(Interpreter *interpreter, Stmt *stmt);											// 处理 switch 语句
+static void executeBreak(Interpreter *interpreter, Stmt *stmt);												// 处理 break 语句
 
-static Value callFunction(Interpreter *interpreter, Function *function, Value *arguments, int argCount);
-static void runtimeError(Interpreter *interpreter, const char *format, ...);
+static Value callFunction(Interpreter *interpreter, Function *function, Value *arguments, int argCount); // 调用函数
+static void runtimeError(Interpreter *interpreter, const char *format, ...);							 // 处理运行时错误
 
 typedef struct
 {
@@ -53,20 +53,49 @@ typedef struct
 static ReturnStatus returnStatus;
 static BreakStatus breakStatus = {false};
 
-// 初始化解释器
+/**
+ * 初始化解释器
+ *
+ * 此函数负责初始化解释器的所有核心组件，包括全局环境、错误状态和主函数相关字段。
+ * 同时注册所有内置的原生函数。
+ *
+ * @param interpreter 指向要初始化的解释器实例的指针
+ *
+ * 初始化内容包括：
+ * - 分配并初始化全局环境
+ * - 设置当前环境为全局环境
+ * - 重置错误状态和错误消息
+ * - 初始化主函数相关标志和指针
+ * - 注册所有原生函数到解释器中
+ */
 void initInterpreter(Interpreter *interpreter)
 {
-	interpreter->globals = (Environment *)malloc(sizeof(Environment));
-	initEnvironment(interpreter->globals, NULL);
-	interpreter->environment = interpreter->globals;
-	interpreter->hadError = false;
-	interpreter->errorMessage[0] = '\0';
-	interpreter->hasMainFunction = false; // 初始化为 false
-	interpreter->mainFunction = NULL;	  // 初始化为 NULL
+	interpreter->globals = (Environment *)malloc(sizeof(Environment)); // 分配全局环境
+	initEnvironment(interpreter->globals, NULL);					   // 初始化全局环境
+	interpreter->environment = interpreter->globals;				   // 设置当前环境为全局环境
+	interpreter->hadError = false;									   // 重置错误状态
+	interpreter->errorMessage[0] = '\0';							   // 清空错误消息
+	interpreter->hasMainFunction = false;							   // 初始化为 false
+	interpreter->mainFunction = NULL;								   // 初始化为 NULL
 
 	registerAllNativeFunctions(interpreter);
 }
 
+/**
+ * 解释执行语句序列
+ * 
+ * 该函数采用两阶段执行策略：
+ * 第一阶段：优先执行所有函数定义语句，确保函数在调用前已被定义
+ * 第二阶段：执行其他类型的语句（变量声明、表达式等）
+ * 执行完成后，如果存在main函数，会自动调用它
+ * 
+ * @param interpreter 解释器实例，包含执行环境和状态信息
+ * @param statements 待执行的语句数组
+ * @param count 语句数组的长度
+ * 
+ * @note 如果在执行过程中发生错误，函数会立即返回，不继续执行后续语句
+ * @note main函数如果存在会在所有语句执行完毕后自动调用，无需手动调用
+ */
 void interpret(Interpreter *interpreter, Stmt **statements, int count)
 {
 	// 第一阶段：只执行函数定义
@@ -968,192 +997,192 @@ static Value evaluateArrayAssign(Interpreter *interpreter, Expr *expr)
 
 static Value evaluateCast(Interpreter *interpreter, Expr *expr)
 {
-    Value value = evaluate(interpreter, expr->as.cast.expression);
-    if (interpreter->hadError)
-    {
-        return createNull();
-    }
+	Value value = evaluate(interpreter, expr->as.cast.expression);
+	if (interpreter->hadError)
+	{
+		return createNull();
+	}
 
-    BaseType targetType = expr->as.cast.targetType;
-    
-    // 执行类型转换
-    switch (targetType)
-    {
-    case TYPE_INT:
-    {
-        switch (value.type)
-        {
-        case VAL_NUMBER:
-            // 已经是数字，直接返回整数部分
-            {
-                int intValue = (int)value.as.number;
-                freeValue(value);
-                return createNumber((double)intValue);
-            }
-        case VAL_STRING:
-            // 字符串转整数
-            if (value.as.string != NULL)
-            {
-                char *endptr;
-                long intValue = strtol(value.as.string, &endptr, 10);
-                
-                // 检查转换是否成功
-                if (endptr == value.as.string || *endptr != '\0')
-                {
-                    freeValue(value);
-                    runtimeError(interpreter, "Cannot convert string '%s' to int", value.as.string);
-                    return createNull();
-                }
-                
-                freeValue(value);
-                return createNumber((double)intValue);
-            }
-            else
-            {
-                freeValue(value);
-                runtimeError(interpreter, "Cannot convert null string to int");
-                return createNull();
-            }
-        case VAL_BOOL:
-            // 布尔转整数：true -> 1, false -> 0
-            {
-                int intValue = value.as.boolean ? 1 : 0;
-                freeValue(value);
-                return createNumber((double)intValue);
-            }
-        default:
-            freeValue(value);
-            runtimeError(interpreter, "Cannot convert to int");
-            return createNull();
-        }
-    }
-    
-    case TYPE_FLOAT:
-    {
-        switch (value.type)
-        {
-        case VAL_NUMBER:
-            // 已经是数字，直接返回
-            return value;
-        case VAL_STRING:
-            // 字符串转浮点数
-            if (value.as.string != NULL)
-            {
-                char *endptr;
-                double floatValue = strtod(value.as.string, &endptr);
-                
-                // 检查转换是否成功
-                if (endptr == value.as.string || *endptr != '\0')
-                {
-                    freeValue(value);
-                    runtimeError(interpreter, "Cannot convert string '%s' to float", value.as.string);
-                    return createNull();
-                }
-                
-                freeValue(value);
-                return createNumber(floatValue);
-            }
-            else
-            {
-                freeValue(value);
-                runtimeError(interpreter, "Cannot convert null string to float");
-                return createNull();
-            }
-        case VAL_BOOL:
-            // 布尔转浮点数：true -> 1.0, false -> 0.0
-            {
-                double floatValue = value.as.boolean ? 1.0 : 0.0;
-                freeValue(value);
-                return createNumber(floatValue);
-            }
-        default:
-            freeValue(value);
-            runtimeError(interpreter, "Cannot convert to float");
-            return createNull();
-        }
-    }
-    
-    case TYPE_STRING:
-    {
-        char buffer[64];
-        switch (value.type)
-        {
-        case VAL_NUMBER:
-            // 数字转字符串
-            if (value.as.number == (int)value.as.number)
-            {
-                // 整数
-                snprintf(buffer, sizeof(buffer), "%d", (int)value.as.number);
-            }
-            else
-            {
-                // 浮点数
-                snprintf(buffer, sizeof(buffer), "%g", value.as.number);
-            }
-            freeValue(value);
-            return createString(buffer);
-            
-        case VAL_BOOL:
-            // 布尔转字符串
-            freeValue(value);
-            return createString(value.as.boolean ? "true" : "false");
-            
-        case VAL_STRING:
-            // 已经是字符串，直接返回
-            return value;
-            
-        case VAL_NULL:
-            freeValue(value);
-            return createString("null");
-            
-        default:
-            freeValue(value);
-            runtimeError(interpreter, "Cannot convert to string");
-            return createNull();
-        }
-    }
-    
-    case TYPE_BOOL:
-    {
-        switch (value.type)
-        {
-        case VAL_BOOL:
-            // 已经是布尔值，直接返回
-            return value;
-            
-        case VAL_NUMBER:
-            // 数字转布尔：0 -> false, 其他 -> true
-            {
-                bool boolValue = value.as.number != 0.0;
-                freeValue(value);
-                return createBool(boolValue);
-            }
-            
-        case VAL_STRING:
-            // 字符串转布尔：空字符串 -> false, 其他 -> true
-            {
-                bool boolValue = (value.as.string != NULL && strlen(value.as.string) > 0);
-                freeValue(value);
-                return createBool(boolValue);
-            }
-            
-        case VAL_NULL:
-            // null -> false
-            freeValue(value);
-            return createBool(false);
-            
-        default:
-            freeValue(value);
-            runtimeError(interpreter, "Cannot convert to bool");
-            return createNull();
-        }
-    }
-    
-    default:
-        freeValue(value);
-        runtimeError(interpreter, "Unsupported cast target type");
-        return createNull();
-    }
+	BaseType targetType = expr->as.cast.targetType;
+
+	// 执行类型转换
+	switch (targetType)
+	{
+	case TYPE_INT:
+	{
+		switch (value.type)
+		{
+		case VAL_NUMBER:
+			// 已经是数字，直接返回整数部分
+			{
+				int intValue = (int)value.as.number;
+				freeValue(value);
+				return createNumber((double)intValue);
+			}
+		case VAL_STRING:
+			// 字符串转整数
+			if (value.as.string != NULL)
+			{
+				char *endptr;
+				long intValue = strtol(value.as.string, &endptr, 10);
+
+				// 检查转换是否成功
+				if (endptr == value.as.string || *endptr != '\0')
+				{
+					freeValue(value);
+					runtimeError(interpreter, "Cannot convert string '%s' to int", value.as.string);
+					return createNull();
+				}
+
+				freeValue(value);
+				return createNumber((double)intValue);
+			}
+			else
+			{
+				freeValue(value);
+				runtimeError(interpreter, "Cannot convert null string to int");
+				return createNull();
+			}
+		case VAL_BOOL:
+			// 布尔转整数：true -> 1, false -> 0
+			{
+				int intValue = value.as.boolean ? 1 : 0;
+				freeValue(value);
+				return createNumber((double)intValue);
+			}
+		default:
+			freeValue(value);
+			runtimeError(interpreter, "Cannot convert to int");
+			return createNull();
+		}
+	}
+
+	case TYPE_FLOAT:
+	{
+		switch (value.type)
+		{
+		case VAL_NUMBER:
+			// 已经是数字，直接返回
+			return value;
+		case VAL_STRING:
+			// 字符串转浮点数
+			if (value.as.string != NULL)
+			{
+				char *endptr;
+				double floatValue = strtod(value.as.string, &endptr);
+
+				// 检查转换是否成功
+				if (endptr == value.as.string || *endptr != '\0')
+				{
+					freeValue(value);
+					runtimeError(interpreter, "Cannot convert string '%s' to float", value.as.string);
+					return createNull();
+				}
+
+				freeValue(value);
+				return createNumber(floatValue);
+			}
+			else
+			{
+				freeValue(value);
+				runtimeError(interpreter, "Cannot convert null string to float");
+				return createNull();
+			}
+		case VAL_BOOL:
+			// 布尔转浮点数：true -> 1.0, false -> 0.0
+			{
+				double floatValue = value.as.boolean ? 1.0 : 0.0;
+				freeValue(value);
+				return createNumber(floatValue);
+			}
+		default:
+			freeValue(value);
+			runtimeError(interpreter, "Cannot convert to float");
+			return createNull();
+		}
+	}
+
+	case TYPE_STRING:
+	{
+		char buffer[64];
+		switch (value.type)
+		{
+		case VAL_NUMBER:
+			// 数字转字符串
+			if (value.as.number == (int)value.as.number)
+			{
+				// 整数
+				snprintf(buffer, sizeof(buffer), "%d", (int)value.as.number);
+			}
+			else
+			{
+				// 浮点数
+				snprintf(buffer, sizeof(buffer), "%g", value.as.number);
+			}
+			freeValue(value);
+			return createString(buffer);
+
+		case VAL_BOOL:
+			// 布尔转字符串
+			freeValue(value);
+			return createString(value.as.boolean ? "true" : "false");
+
+		case VAL_STRING:
+			// 已经是字符串，直接返回
+			return value;
+
+		case VAL_NULL:
+			freeValue(value);
+			return createString("null");
+
+		default:
+			freeValue(value);
+			runtimeError(interpreter, "Cannot convert to string");
+			return createNull();
+		}
+	}
+
+	case TYPE_BOOL:
+	{
+		switch (value.type)
+		{
+		case VAL_BOOL:
+			// 已经是布尔值，直接返回
+			return value;
+
+		case VAL_NUMBER:
+			// 数字转布尔：0 -> false, 其他 -> true
+			{
+				bool boolValue = value.as.number != 0.0;
+				freeValue(value);
+				return createBool(boolValue);
+			}
+
+		case VAL_STRING:
+			// 字符串转布尔：空字符串 -> false, 其他 -> true
+			{
+				bool boolValue = (value.as.string != NULL && strlen(value.as.string) > 0);
+				freeValue(value);
+				return createBool(boolValue);
+			}
+
+		case VAL_NULL:
+			// null -> false
+			freeValue(value);
+			return createBool(false);
+
+		default:
+			freeValue(value);
+			runtimeError(interpreter, "Cannot convert to bool");
+			return createNull();
+		}
+	}
+
+	default:
+		freeValue(value);
+		runtimeError(interpreter, "Unsupported cast target type");
+		return createNull();
+	}
 }
 
 // 实现条件语句执行
