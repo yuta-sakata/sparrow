@@ -228,6 +228,34 @@ Stmt *createReturnStmt(Token keyword, Expr *value)
     return stmt;
 }
 
+// 创建 switch 语句
+Stmt *createSwitchStmt(Expr *discriminant, CaseStmt *cases, int caseCount)
+{
+    Stmt *stmt = (Stmt *)malloc(sizeof(Stmt));
+    if (stmt == NULL)
+    {
+        return NULL;
+    }
+    stmt->type = STMT_SWITCH;
+    stmt->as.switchStmt.discriminant = discriminant;
+    stmt->as.switchStmt.cases = cases;
+    stmt->as.switchStmt.caseCount = caseCount;
+    return stmt;
+}
+
+// 创建 break 语句
+Stmt *createBreakStmt(Token keyword)
+{
+    Stmt *stmt = (Stmt *)malloc(sizeof(Stmt));
+    if (stmt == NULL)
+    {
+        return NULL;
+    }
+    stmt->type = STMT_BREAK;
+    stmt->as.breakStmt.keyword = keyword;
+    return stmt;
+}
+
 Expr *copyExpr(Expr *expr)
 {
     if (expr == NULL)
@@ -424,7 +452,7 @@ Expr *copyExpr(Expr *expr)
                 fprintf(stderr, "内存分配失败\n");
                 return NULL;
             }
-            
+
             for (int i = 0; i < expr->as.arrayLiteral.elementCount; i++)
             {
                 elementsCopy[i] = copyExpr(expr->as.arrayLiteral.elements[i]);
@@ -447,8 +475,10 @@ Expr *copyExpr(Expr *expr)
         Expr *indexCopy = copyExpr(expr->as.arrayAccess.index);
         if (arrayCopy == NULL || indexCopy == NULL)
         {
-            if (arrayCopy) freeExpr(arrayCopy);
-            if (indexCopy) freeExpr(indexCopy);
+            if (arrayCopy)
+                freeExpr(arrayCopy);
+            if (indexCopy)
+                freeExpr(indexCopy);
             return NULL;
         }
         return createArrayAccessExpr(arrayCopy, indexCopy);
@@ -461,9 +491,12 @@ Expr *copyExpr(Expr *expr)
         Expr *valueCopy = copyExpr(expr->as.arrayAssign.value);
         if (arrayCopy == NULL || indexCopy == NULL || valueCopy == NULL)
         {
-            if (arrayCopy) freeExpr(arrayCopy);
-            if (indexCopy) freeExpr(indexCopy);
-            if (valueCopy) freeExpr(valueCopy);
+            if (arrayCopy)
+                freeExpr(arrayCopy);
+            if (indexCopy)
+                freeExpr(indexCopy);
+            if (valueCopy)
+                freeExpr(valueCopy);
             return NULL;
         }
         return createArrayAssignExpr(arrayCopy, indexCopy, valueCopy);
@@ -481,7 +514,7 @@ Expr *createArrayLiteralExpr(Expr **elements, int elementCount)
     Expr *expr = (Expr *)malloc(sizeof(Expr));
     if (expr == NULL)
         return NULL;
-    
+
     expr->type = EXPR_ARRAY_LITERAL;
     expr->as.arrayLiteral.elements = elements;
     expr->as.arrayLiteral.elementCount = elementCount;
@@ -494,7 +527,7 @@ Expr *createArrayAccessExpr(Expr *array, Expr *index)
     Expr *expr = (Expr *)malloc(sizeof(Expr));
     if (expr == NULL)
         return NULL;
-    
+
     expr->type = EXPR_ARRAY_ACCESS;
     expr->as.arrayAccess.array = array;
     expr->as.arrayAccess.index = index;
@@ -507,7 +540,7 @@ Expr *createArrayAssignExpr(Expr *array, Expr *index, Expr *value)
     Expr *expr = (Expr *)malloc(sizeof(Expr));
     if (expr == NULL)
         return NULL;
-    
+
     expr->type = EXPR_ARRAY_ASSIGN;
     expr->as.arrayAssign.array = array;
     expr->as.arrayAssign.index = index;
@@ -557,12 +590,12 @@ void freeExpr(Expr *expr)
         }
         free(expr->as.arrayLiteral.elements);
         break;
-        
+
     case EXPR_ARRAY_ACCESS:
         freeExpr(expr->as.arrayAccess.array);
         freeExpr(expr->as.arrayAccess.index);
         break;
-        
+
     case EXPR_ARRAY_ASSIGN:
         freeExpr(expr->as.arrayAssign.array);
         freeExpr(expr->as.arrayAssign.index);
@@ -591,7 +624,7 @@ void freeStmt(Stmt *stmt)
     case STMT_VAR:
         freeExpr(stmt->as.var.initializer);
         break;
-    case STMT_CONST:  // 添加常量声明的内存释放
+    case STMT_CONST: // 添加常量声明的内存释放
         if (stmt->as.constStmt.initializer != NULL)
         {
             freeExpr(stmt->as.constStmt.initializer);
@@ -664,6 +697,30 @@ void freeStmt(Stmt *stmt)
         {
             freeExpr(stmt->as.returnStmt.value);
         }
+        break;
+    case STMT_SWITCH:
+        if (stmt->as.switchStmt.discriminant != NULL)
+        {
+            freeExpr(stmt->as.switchStmt.discriminant);
+        }
+        if (stmt->as.switchStmt.cases != NULL)
+        {
+            for (int i = 0; i < stmt->as.switchStmt.caseCount; i++)
+            {
+                if (stmt->as.switchStmt.cases[i].value != NULL)
+                {
+                    freeExpr(stmt->as.switchStmt.cases[i].value);
+                }
+                if (stmt->as.switchStmt.cases[i].body != NULL)
+                {
+                    freeStmt(stmt->as.switchStmt.cases[i].body);
+                }
+            }
+            free(stmt->as.switchStmt.cases);
+        }
+        break;
+    case STMT_BREAK:
+        // break 语句没有需要释放的内存
         break;
     }
 

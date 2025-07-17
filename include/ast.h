@@ -23,7 +23,9 @@ typedef enum
     EXPR_CALL,          // 函数调用
     EXPR_ARRAY_LITERAL, // 数组字面量
     EXPR_ARRAY_ACCESS,  // 数组访问
-    EXPR_ARRAY_ASSIGN   // 数组赋值
+    EXPR_ARRAY_ASSIGN,  // 数组赋值
+    STMT_SWITCH,        // switch语句
+    STMT_BREAK,         // break语句
 } ExprType;
 
 // 语句类型
@@ -41,12 +43,33 @@ typedef enum
     STMT_RETURN,     // return语句
 } StmtType;
 
+// case 语句结构
+typedef struct
+{
+    Expr *value; // case 值表达式，NULL 表示 default
+    Stmt *body;  // case 体
+} CaseStmt;
+
+// switch 语句结构
+typedef struct
+{
+    Expr *discriminant; // switch 表达式
+    CaseStmt *cases;    // case 数组
+    int caseCount;      // case 数量
+} SwitchStmt;
+
+// break 语句结构
+typedef struct
+{
+    Token keyword; // break 关键字
+} BreakStmt;
+
 // 常量声明语句结构
 typedef struct
 {
     Token name;
     TypeAnnotation type;
-    Expr *initializer;  // 常量必须有初始值
+    Expr *initializer; // 常量必须有初始值
 } ConstStmt;
 
 // 多变量声明语句结构
@@ -61,16 +84,16 @@ typedef struct
 // 二元表达式
 typedef struct
 {
-    Expr *left;
-    TokenType op;
-    Expr *right;
+    Expr *left;   // 左操作数
+    TokenType op; // 运算符
+    Expr *right;  // 右操作数
 } BinaryExpr;
 
 // 一元表达式
 typedef struct
 {
-    TokenType op;
-    Expr *right;
+    TokenType op; // 运算符
+    Expr *right;  // 被操作的表达式
 } UnaryExpr;
 
 // 后缀表达式
@@ -83,20 +106,20 @@ typedef struct
 // 前缀表达式
 typedef struct
 {
-    Expr *operand;
-    TokenType op;
+    Expr *operand; // 被操作的表达式
+    TokenType op;  // 运算符 (++ 或 --)
 } PrefixExpr;
 
 // 字面量表达式
 typedef struct
 {
-    Token value;
+    Token value; // 字面量值
 } LiteralExpr;
 
 // 分组表达式
 typedef struct
 {
-    Expr *expression;
+    Expr *expression; // 被分组的表达式
 } GroupingExpr;
 
 // 变量引用
@@ -244,6 +267,8 @@ struct Stmt
         ForStmt forLoop;
         FunctionStmt function;
         ReturnStmt returnStmt;
+        SwitchStmt switchStmt;
+        BreakStmt breakStmt;
     } as;
 };
 
@@ -273,6 +298,8 @@ Stmt *createWhileStmt(Expr *condition, Stmt *body);
 Stmt *createForStmt(Stmt *initializer, Expr *condition, Expr *increment, Stmt *body);
 Stmt *createFunctionStmt(Token name, Token *params, bool *paramHasVar, TypeAnnotation *paramTypes, int paramCount, TypeAnnotation returnTypeToken, Stmt *body);
 Stmt *createReturnStmt(Token keyword, Expr *value);
+Stmt *createSwitchStmt(Expr *discriminant, CaseStmt *cases, int caseCount);
+Stmt *createBreakStmt(Token keyword);
 
 // 释放AST节点内存
 void freeExpr(Expr *expr);

@@ -2,29 +2,27 @@
 #include "lexer.h"
 #include "value.h"
 
+static const char *baseTypeToString(BaseType type);
+
+
 // 类型注解转字符串
 const char *annotationToString(TypeAnnotation type)
 {
-    if (type.kind == TYPE_ARRAY)
-    {
-        // 处理数组类型，这里简化处理
-        switch (type.as.array.elementType)
-        {
-        case TYPE_INT:
-            return "int[]";
-        case TYPE_FLOAT:
-            return "float[]";
-        case TYPE_STRING:
-            return "string[]";
-        case TYPE_BOOL:
-            return "boolean[]";
-        default:
-            return "unknown[]";
-        }
+   static char buffer[64];
+    
+    if (type.kind == TYPE_ARRAY) {
+        snprintf(buffer, sizeof(buffer), "%s[]", 
+                baseTypeToString(type.as.array.elementType));
+        return buffer;
     }
+    
+    // 简单类型
+    return baseTypeToString(type.as.simple);
+}
 
-    // 处理简单类型
-    switch (type.as.simple)
+static const char *baseTypeToString(BaseType type)
+{
+    switch (type)
     {
     case TYPE_ANY:
         return "any";
@@ -37,7 +35,7 @@ const char *annotationToString(TypeAnnotation type)
     case TYPE_STRING:
         return "string";
     case TYPE_BOOL:
-        return "boolean";
+        return "bool";
     case TYPE_FUNCTION:
         return "function";
     default:

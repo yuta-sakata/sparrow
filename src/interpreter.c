@@ -31,9 +31,16 @@ static void executeWhile(Interpreter *interpreter, Stmt *stmt);
 static void executeFor(Interpreter *interpreter, Stmt *stmt);
 static void executeFunction(Interpreter *interpreter, Stmt *stmt);
 static void executeReturn(Interpreter *interpreter, Stmt *stmt);
+static void executeSwitch(Interpreter *interpreter, Stmt *stmt);
+static void executeBreak(Interpreter *interpreter, Stmt *stmt);
 
 static Value callFunction(Interpreter *interpreter, Function *function, Value *arguments, int argCount);
 static void runtimeError(Interpreter *interpreter, const char *format, ...);
+
+typedef struct
+{
+    bool hasBreak;
+} BreakStatus;
 
 typedef struct
 {
@@ -43,6 +50,7 @@ typedef struct
 
 // 静态变量
 static ReturnStatus returnStatus;
+static BreakStatus breakStatus = {false};
 
 // 初始化解释器
 void initInterpreter(Interpreter *interpreter)
@@ -133,6 +141,12 @@ void execute(Interpreter *interpreter, Stmt *stmt)
 	case STMT_RETURN:
 		executeReturn(interpreter, stmt);
 		break;
+	case STMT_SWITCH:
+        executeSwitch(interpreter, stmt);
+        break;
+    case STMT_BREAK:
+        executeBreak(interpreter, stmt);
+        break;
 	}
 }
 
@@ -1261,6 +1275,70 @@ static void executeReturn(Interpreter *interpreter, Stmt *stmt)
 	returnStatus.value = value;
 }
 
+static void executeSwitch(Interpreter *interpreter, Stmt *stmt)
+{
+    Value discriminant = evaluate(interpreter, stmt->as.switchStmt.discriminant);
+    if (interpreter->hadError)
+    {
+        return;
+    }
+
+    bool matched = false;
+    bool fallthrough = false;
+    
+    // 重置 break 状态
+    breakStatus.hasBreak = false;
+
+    for (int i = 0; i < stmt->as.switchStmt.caseCount; i++)
+    {
+        CaseStmt *caseStmt = &stmt->as.switchStmt.cases[i];
+        
+        if (caseStmt->value == NULL) // default case
+        {
+            if (!matched)
+            {
+                matched = true;
+                fallthrough = true;
+            }
+        }
+        else
+        {
+            Value caseValue = evaluate(interpreter, caseStmt->value);
+            if (interpreter->hadError)
+            {
+                freeValue(discriminant);
+                return;
+            }
+
+            if (!matched && valuesEqual(discriminant, caseValue))
+            {
+                matched = true;
+                fallthrough = true;
+            }
+            
+            freeValue(caseValue);
+        }
+
+        if (fallthrough)
+        {
+            execute(interpreter, caseStmt->body);
+            
+            if (breakStatus.hasBreak || interpreter->hadError)
+            {
+                break;
+            }
+        }
+    }
+
+    freeValue(discriminant);
+    breakStatus.hasBreak = false; // 重置状态
+}
+
+// 执行 break 语句
+static void executeBreak(Interpreter *interpreter, Stmt *stmt)
+{
+    breakStatus.hasBreak = true;
+}
 /**
  * 调用函数并执行函数体
  *

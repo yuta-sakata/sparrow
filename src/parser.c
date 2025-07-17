@@ -29,6 +29,8 @@ static Stmt *ifStatement(Parser *parser);
 static Stmt *whileStatement(Parser *parser);
 static Stmt *forStatement(Parser *parser);
 static Stmt *returnStatement(Parser *parser);
+static Stmt *switchStatement(Parser *parser);
+static Stmt *breakStatement(Parser *parser);
 
 // 辅助函数声明
 static int match(Parser *parser, TokenType type);
@@ -40,6 +42,7 @@ static int isAtEnd(Parser *parser);
 static Token consume(Parser *parser, TokenType type, const char *message);
 static void synchronize(Parser *parser);
 static void error(Parser *parser, const char *message);
+static TypeAnnotation parseTypeAnnotation(Parser *parser);
 
 // 初始化语法分析器
 void initParser(Parser *parser, Token *tokens, int count)
@@ -104,18 +107,26 @@ const char *getParseErrorMsg(Parser *parser)
     return parser->errorMsg;
 }
 
+
 /**
- * @brief 解析声明语句
- *
- * 处理函数声明和变量声明。如果当前标记是函数关键字，则解析函数声明；
- * 如果当前标记是变量声明关键字(var)，则解析变量声明；
- * 否则将解析为普通语句。
- *
- * 对于变量声明，支持可选的类型注解（使用冒号后跟类型名），以及可选的初始化表达式。
- * 类型可以是int、float、string或bool。
- *
- * @param parser 解析器指针
- * @return Stmt* 返回解析后的声明语句，若解析出错则返回NULL
+ * 解析声明语句
+ * 
+ * 该函数负责解析各种类型的声明语句，包括：
+ * - 函数声明 (function关键字)
+ * - 变量声明 (var关键字)
+ * - 常量声明 (const关键字)
+ * 
+ * 对于变量声明，支持以下特性：
+ * - 多变量声明：var a, b, c;
+ * - 类型注解：var a: int;
+ * - 初始化表达式：var a = 10;
+ * - 组合使用：var a, b: int = 5;
+ * 
+ * @param parser 解析器实例指针
+ * @return 返回解析得到的声明语句指针，如果解析失败则返回NULL
+ * 
+ * @note 函数会动态分配内存来存储多个变量名，并在发生错误时自动释放内存
+ * @note 如果不匹配任何声明类型，则调用statement()函数解析普通语句
  */
 static Stmt *declaration(Parser *parser)
 {
@@ -158,37 +169,17 @@ static Stmt *declaration(Parser *parser)
             names[count++] = name;
         }
 
-        // 处理类型注解（所有变量共用相同类型）
-        Token type = {0};
-        type.type = TOKEN_VOID; // 默认值
+        // 处理类型注解
+        TypeAnnotation typeAnnotation;
+        typeAnnotation.kind = TYPE_SIMPLE;
+        typeAnnotation.as.simple = TYPE_ANY;  // 默认值
 
         if (match(parser, TOKEN_COLON))
         {
-            if (match(parser, TOKEN_INT))
+            // 使用 parseTypeAnnotation 来解析类型
+            typeAnnotation = parseTypeAnnotation(parser);
+            if (parser->hadError)
             {
-                type = previous(parser);
-            }
-            else if (match(parser, TOKEN_FLOAT_TYPE))
-            {
-                type = previous(parser);
-            }
-            else if (match(parser, TOKEN_STRING_TYPE))
-            {
-                type = previous(parser);
-            }
-            else if (match(parser, TOKEN_BOOL))
-            {
-                type = previous(parser);
-            }
-            else if (match(parser, TOKEN_VOID))
-            {
-                error(parser, "void can only be used as a function return type");
-                free(names);
-                return NULL;
-            }
-            else
-            {
-                error(parser, "Expected type annotation.");
                 free(names);
                 return NULL;
             }
@@ -214,17 +205,17 @@ static Stmt *declaration(Parser *parser)
         if (count == 1)
         {
             // 只有一个变量，直接创建并返回单个语句
-            Stmt *stmt = createVarStmt(names[0], tokenToTypeAnnotation(type.type), initializer);
+            Stmt *stmt = createVarStmt(names[0], typeAnnotation, initializer);
             free(names);
             return stmt;
         }
         else
         {
-            return createMultiVarStmt(names, count, tokenToTypeAnnotation(type.type), initializer);
+            return createMultiVarStmt(names, count, typeAnnotation, initializer);
         }
     }
 
-    if (match(parser, TOKEN_CONST))  // 添加常量声明解析
+    if (match(parser, TOKEN_CONST)) // 添加常量声明解析
     {
         return constDeclaration(parser);
     }
@@ -232,7 +223,34 @@ static Stmt *declaration(Parser *parser)
     return statement(parser);
 }
 
-// 解析函数声明
+
+/**
+ * 解析函数声明语句
+ * 
+ * 此函数负责解析函数声明的完整语法，包括：
+ * - 函数名
+ * - 参数列表（支持可变参数，第一个参数必须使用 var 关键字）
+ * - 参数类型注解（可选，默认为 TYPE_ANY）
+ * - 返回类型注解（可选，默认为 TYPE_VOID）
+ * - 函数体
+ * 
+ * 语法格式：
+ * function_name(var param1: type1, param2: type2, ...): return_type {
+ *     // 函数体
+ * }
+ * 
+ * 参数规则：
+ * - 最多支持 255 个参数
+ * - 第一个参数必须使用 var 关键字声明
+ * - 后续参数默认继承第一个参数的 var 状态
+ * - 参数类型注解为可选，使用冒号分隔
+ * 
+ * @param parser 解析器实例指针
+ * @return 成功时返回函数声明语句节点，失败时返回 NULL
+ * 
+ * @note 函数会自动管理内存分配，在错误情况下会释放已分配的内存
+ * @note 支持动态扩展参数数组容量，初始容量为 8，不足时翻倍扩展
+ */
 static Stmt *functionDeclaration(Parser *parser)
 {
     Token name = consume(parser, TOKEN_IDENTIFIER, "Expect function name.");
@@ -312,29 +330,16 @@ static Stmt *functionDeclaration(Parser *parser)
             // 参数类型
             Token paramType = {0};
             paramType.type = TOKEN_VOID; // 默认类型
+            TypeAnnotation paramTypeAnnotation;
+            paramTypeAnnotation.kind = TYPE_SIMPLE;
+            paramTypeAnnotation.as.simple = TYPE_ANY;
 
             if (match(parser, TOKEN_COLON))
             {
                 // 解析参数类型
-                if (match(parser, TOKEN_INT))
+                paramTypeAnnotation = parseTypeAnnotation(parser);
+                if (parser->hadError)
                 {
-                    paramType = previous(parser);
-                }
-                else if (match(parser, TOKEN_FLOAT_TYPE))
-                {
-                    paramType = previous(parser);
-                }
-                else if (match(parser, TOKEN_STRING_TYPE))
-                {
-                    paramType = previous(parser);
-                }
-                else if (match(parser, TOKEN_BOOL))
-                {
-                    paramType = previous(parser);
-                }
-                else
-                {
-                    error(parser, "Expected parameter type after ':'.");
                     if (parameters)
                         free(parameters);
                     if (paramTokenTypes)
@@ -360,7 +365,7 @@ static Stmt *functionDeclaration(Parser *parser)
             // 添加参数信息
             parameters[paramCount] = param;
             paramTokenTypes[paramCount] = paramType;
-            paramTypes[paramCount] = tokenToTypeAnnotation(paramType.type); // 转换为TypeAnnotation
+            paramTypes[paramCount] = paramTypeAnnotation;
             paramHasVarFlags[paramCount] = hasVar;
             paramCount++;
 
@@ -382,35 +387,16 @@ static Stmt *functionDeclaration(Parser *parser)
     }
 
     // 检查是否有返回类型注解（冒号后跟类型）
-    Token returnType = {0};
-    returnType.type = TOKEN_VOID; // 默认返回类型为 void
+    TypeAnnotation returnTypeAnnotation;
+    returnTypeAnnotation.kind = TYPE_SIMPLE;
+    returnTypeAnnotation.as.simple = TYPE_VOID;  // 默认返回类型为 void
 
     if (match(parser, TOKEN_COLON))
     {
         // 解析返回类型
-        if (match(parser, TOKEN_VOID))
+        returnTypeAnnotation = parseTypeAnnotation(parser);
+        if (parser->hadError)
         {
-            returnType = previous(parser);
-        }
-        else if (match(parser, TOKEN_INT))
-        {
-            returnType = previous(parser);
-        }
-        else if (match(parser, TOKEN_FLOAT_TYPE))
-        {
-            returnType = previous(parser);
-        }
-        else if (match(parser, TOKEN_STRING_TYPE))
-        {
-            returnType = previous(parser);
-        }
-        else if (match(parser, TOKEN_BOOL))
-        {
-            returnType = previous(parser);
-        }
-        else
-        {
-            error(parser, "Expected return type after ':'.");
             if (parameters)
                 free(parameters);
             if (paramTokenTypes)
@@ -453,7 +439,7 @@ static Stmt *functionDeclaration(Parser *parser)
     }
 
     // 现在传递正确的类型
-    Stmt *result = createFunctionStmt(name, parameters, paramHasVarFlags, paramTypes, paramCount, tokenToTypeAnnotation(returnType.type), body);
+    Stmt *result = createFunctionStmt(name, parameters, paramHasVarFlags, paramTypes, paramCount, returnTypeAnnotation, body);
 
     // 清理临时的Token类型数组
     if (paramTokenTypes)
@@ -465,43 +451,66 @@ static Stmt *functionDeclaration(Parser *parser)
 // 解析变量声明
 static Stmt *varDeclaration(Parser *parser)
 {
+    // 创建存储多个变量名的数组
+    int capacity = 4;
+    int count = 0;
+    Token *names = (Token *)malloc(sizeof(Token) * capacity);
+
+    // 解析第一个变量名
     Token name = consume(parser, TOKEN_IDENTIFIER, "Expect variable name.");
     if (parser->hadError)
+    {
+        free(names);
         return NULL;
+    }
+    names[count++] = name;
 
-    Token type;
-    type.type = TOKEN_VOID; // 默认值，实际上会被忽略
+    // 处理连续的变量声明（用逗号分隔）
+    while (match(parser, TOKEN_COMMA))
+    {
+        if (count >= capacity)
+        {
+            capacity *= 2;
+            names = (Token *)realloc(names, sizeof(Token) * capacity);
+        }
+
+        name = consume(parser, TOKEN_IDENTIFIER, "Expect variable name after ','.");
+        if (parser->hadError)
+        {
+            free(names);
+            return NULL;
+        }
+        names[count++] = name;
+    }
 
     // 处理类型注解
+    TypeAnnotation typeAnnotation;
+    typeAnnotation.kind = TYPE_SIMPLE;
+    typeAnnotation.as.simple = TYPE_ANY;  // 默认值
+
     if (match(parser, TOKEN_COLON))
     {
-        if (match(parser, TOKEN_INT))
+        // 解析类型
+        typeAnnotation = parseTypeAnnotation(parser);
+        if (parser->hadError)
         {
-            type = previous(parser);
-        }
-        else if (match(parser, TOKEN_FLOAT_TYPE))
-        {
-            type = previous(parser);
-        }
-        else if (match(parser, TOKEN_STRING_TYPE))
-        {
-            type = previous(parser);
-        }
-        else if (match(parser, TOKEN_BOOL))
-        {
-            type = previous(parser);
-        }
-        else
-        {
-            error(parser, "Expected type annotation after ':'.");
+            free(names);
             return NULL;
         }
     }
 
+    // 处理初始值（可选）
     Expr *initializer = NULL;
     if (match(parser, TOKEN_ASSIGN))
     {
         initializer = expression(parser);
+        if (parser->hadError)
+        {
+            if (initializer)
+                freeExpr(initializer);
+            free(names);
+            return NULL;
+        }
     }
 
     consume(parser, TOKEN_SEMICOLON, "Expect ';' after variable declaration.");
@@ -509,9 +518,22 @@ static Stmt *varDeclaration(Parser *parser)
     {
         if (initializer)
             freeExpr(initializer);
+        free(names);
         return NULL;
     }
-    return createVarStmt(name, tokenToTypeAnnotation(type.type), initializer);
+
+    // 为多个变量创建声明语句
+    if (count == 1)
+    {
+        // 只有一个变量，直接创建并返回单个语句
+        Stmt *stmt = createVarStmt(names[0], typeAnnotation, initializer);
+        free(names);
+        return stmt;
+    }
+    else
+    {
+        return createMultiVarStmt(names, count, typeAnnotation, initializer);
+    }
 }
 
 static Stmt *constDeclaration(Parser *parser)
@@ -520,33 +542,16 @@ static Stmt *constDeclaration(Parser *parser)
     if (parser->hadError)
         return NULL;
 
-    Token type;
-    type.type = TOKEN_VOID; // 默认值
+    TypeAnnotation typeAnnotation;
+    typeAnnotation.kind = TYPE_SIMPLE;
+    typeAnnotation.as.simple = TYPE_ANY;  // 默认值
 
     // 处理类型注解
     if (match(parser, TOKEN_COLON))
     {
-        if (match(parser, TOKEN_INT))
-        {
-            type = previous(parser);
-        }
-        else if (match(parser, TOKEN_FLOAT_TYPE))
-        {
-            type = previous(parser);
-        }
-        else if (match(parser, TOKEN_STRING_TYPE))
-        {
-            type = previous(parser);
-        }
-        else if (match(parser, TOKEN_BOOL))
-        {
-            type = previous(parser);
-        }
-        else
-        {
-            error(parser, "Expected type annotation after ':'.");
+        typeAnnotation = parseTypeAnnotation(parser);
+        if (parser->hadError)
             return NULL;
-        }
     }
 
     // 常量必须有初始值
@@ -572,7 +577,7 @@ static Stmt *constDeclaration(Parser *parser)
         return NULL;
     }
 
-    return createConstStmt(name, tokenToTypeAnnotation(type.type), initializer);
+    return createConstStmt(name, typeAnnotation, initializer);
 }
 
 // 解析语句
@@ -803,6 +808,132 @@ static Stmt *returnStatement(Parser *parser)
     return createReturnStmt(keyword, value);
 }
 
+// 解析 switch 语句
+static Stmt *switchStatement(Parser *parser)
+{
+    consume(parser, TOKEN_LPAREN, "Expect '(' after 'switch'.");
+    if (parser->hadError)
+        return NULL;
+
+    Expr *discriminant = expression(parser);
+    if (parser->hadError)
+    {
+        freeExpr(discriminant);
+        return NULL;
+    }
+
+    consume(parser, TOKEN_RPAREN, "Expect ')' after switch expression.");
+    if (parser->hadError)
+    {
+        freeExpr(discriminant);
+        return NULL;
+    }
+
+    consume(parser, TOKEN_LBRACE, "Expect '{' before switch body.");
+    if (parser->hadError)
+    {
+        freeExpr(discriminant);
+        return NULL;
+    }
+
+    // 解析 case 语句
+    int capacity = 8;
+    CaseStmt *cases = (CaseStmt *)malloc(capacity * sizeof(CaseStmt));
+    int caseCount = 0;
+
+    while (!check(parser, TOKEN_RBRACE) && !isAtEnd(parser))
+    {
+        if (caseCount >= capacity)
+        {
+            capacity *= 2;
+            cases = (CaseStmt *)realloc(cases, capacity * sizeof(CaseStmt));
+        }
+
+        if (match(parser, TOKEN_CASE))
+        {
+            Expr *caseValue = expression(parser);
+            if (parser->hadError)
+            {
+                freeExpr(discriminant);
+                free(cases);
+                return NULL;
+            }
+
+            consume(parser, TOKEN_COLON, "Expect ':' after case value.");
+            if (parser->hadError)
+            {
+                freeExpr(discriminant);
+                freeExpr(caseValue);
+                free(cases);
+                return NULL;
+            }
+
+            Stmt *caseBody = statement(parser);
+            if (parser->hadError)
+            {
+                freeExpr(discriminant);
+                freeExpr(caseValue);
+                free(cases);
+                return NULL;
+            }
+
+            cases[caseCount].value = caseValue;
+            cases[caseCount].body = caseBody;
+            caseCount++;
+        }
+        else if (match(parser, TOKEN_DEFAULT))
+        {
+            consume(parser, TOKEN_COLON, "Expect ':' after 'default'.");
+            if (parser->hadError)
+            {
+                freeExpr(discriminant);
+                free(cases);
+                return NULL;
+            }
+
+            Stmt *defaultBody = statement(parser);
+            if (parser->hadError)
+            {
+                freeExpr(discriminant);
+                free(cases);
+                return NULL;
+            }
+
+            cases[caseCount].value = NULL; // NULL 表示 default
+            cases[caseCount].body = defaultBody;
+            caseCount++;
+        }
+        else
+        {
+            error(parser, "Expect 'case' or 'default' in switch statement.");
+            freeExpr(discriminant);
+            free(cases);
+            return NULL;
+        }
+    }
+
+    consume(parser, TOKEN_RBRACE, "Expect '}' after switch body.");
+    if (parser->hadError)
+    {
+        freeExpr(discriminant);
+        free(cases);
+        return NULL;
+    }
+
+    return createSwitchStmt(discriminant, cases, caseCount);
+}
+
+// 解析 break 语句
+static Stmt *breakStatement(Parser *parser)
+{
+    Token keyword = previous(parser);
+    consume(parser, TOKEN_SEMICOLON, "Expect ';' after 'break'.");
+    if (parser->hadError)
+        return NULL;
+
+    return createBreakStmt(keyword);
+}
+
 // 解析表达式
 static Expr *expression(Parser *parser)
 {
@@ -813,10 +944,20 @@ static Expr *expression(Parser *parser)
 static Expr *assignment(Parser *parser)
 {
     Expr *expr = logicalOr(parser);
+    
+    if (expr == NULL)
+    {
+        return NULL;  // 直接返回NULL，不设置错误消息
+    }
 
     if (match(parser, TOKEN_ASSIGN))
     {
         Expr *value = assignment(parser);
+        if (value == NULL)
+        {
+            freeExpr(expr);
+            return NULL;
+        }
 
         if (expr->type == EXPR_VARIABLE)
         {
@@ -832,7 +973,9 @@ static Expr *assignment(Parser *parser)
         }
 
         error(parser, "Invalid assignment target.");
+        freeExpr(expr);
         freeExpr(value);
+        return NULL;
     }
 
     return expr;
@@ -1103,28 +1246,27 @@ static Expr *arrayLiteral(Parser *parser)
 // 解析基本表达式
 static Expr *primary(Parser *parser)
 {
-    if (match(parser, TOKEN_FALSE))
+    if (match(parser, TOKEN_INTEGER) || match(parser, TOKEN_FLOAT))
     {
-        Token token = previous(parser);
-        token.type = TOKEN_FALSE;
-        return createLiteralExpr(token);
+        return createLiteralExpr(previous(parser));
     }
 
-    if (match(parser, TOKEN_TRUE))
+    if (match(parser, TOKEN_STRING))
     {
-        Token token = previous(parser);
-        token.type = TOKEN_TRUE;
-        return createLiteralExpr(token);
+        return createLiteralExpr(previous(parser));
+    }
+
+    if (match(parser, TOKEN_IDENTIFIER))
+    {
+        return createVariableExpr(previous(parser));
+    }
+
+    if (match(parser, TOKEN_TRUE) || match(parser, TOKEN_FALSE))
+    {
+        return createLiteralExpr(previous(parser));
     }
 
     if (match(parser, TOKEN_NULL))
-    {
-        Token token = previous(parser);
-        token.type = TOKEN_NULL;
-        return createLiteralExpr(token);
-    }
-
-    if (match(parser, TOKEN_INTEGER) || match(parser, TOKEN_FLOAT) || match(parser, TOKEN_STRING))
     {
         return createLiteralExpr(previous(parser));
     }
@@ -1132,11 +1274,6 @@ static Expr *primary(Parser *parser)
     if (match(parser, TOKEN_LBRACKET))
     {
         return arrayLiteral(parser);
-    }
-
-    if (match(parser, TOKEN_IDENTIFIER))
-    {
-        return createVariableExpr(previous(parser));
     }
 
     if (match(parser, TOKEN_LPAREN))
@@ -1217,6 +1354,11 @@ static Token consume(Parser *parser, TokenType type, const char *message)
 static void synchronize(Parser *parser)
 {
     parser->hadError = 0; // 重置错误标志，尝试继续解析
+    
+    // 如果已经在文件末尾，直接返回
+    if (isAtEnd(parser))
+        return;
+    
     advance(parser);
 
     while (!isAtEnd(parser))
@@ -1238,8 +1380,11 @@ static void synchronize(Parser *parser)
         case TOKEN_FOR:
         case TOKEN_RETURN:
         case TOKEN_LBRACE:
-        case TOKEN_RBRACE: // 添加右花括号作为同步点
+        case TOKEN_RBRACE: 
+        case TOKEN_RBRACKET:
             return;
+        default:
+            break;
         }
 
         advance(parser);
@@ -1252,4 +1397,60 @@ static void error(Parser *parser, const char *message)
     parser->hadError = 1;
     snprintf(parser->errorMsg, sizeof(parser->errorMsg), "Line %d: Error: %s",
              peek(parser).line, message);
+}
+
+static TypeAnnotation parseTypeAnnotation(Parser *parser)
+{
+    TypeAnnotation type;
+    
+    // 解析基本类型
+    BaseType baseType = TYPE_ANY;
+    
+    if (match(parser, TOKEN_INT))
+    {
+        baseType = TYPE_INT;
+    }
+    else if (match(parser, TOKEN_FLOAT_TYPE))
+    {
+        baseType = TYPE_FLOAT;
+    }
+    else if (match(parser, TOKEN_STRING_TYPE))
+    {
+        baseType = TYPE_STRING;
+    }
+    else if (match(parser, TOKEN_BOOL))
+    {
+        baseType = TYPE_BOOL;
+    }
+    else if (match(parser, TOKEN_VOID))
+    {
+        baseType = TYPE_VOID;
+    }
+    else
+    {
+        error(parser, "Expected type annotation.");
+        type.kind = TYPE_SIMPLE;
+        type.as.simple = TYPE_ANY;
+        return type;
+    }
+    
+    // 检查是否是数组类型
+    if (match(parser, TOKEN_LBRACKET))
+    {
+        if (!match(parser, TOKEN_RBRACKET))
+        {
+            error(parser, "Expected ']' after '['.");
+        }
+        
+        type.kind = TYPE_ARRAY;
+        type.as.array.elementType = baseType;
+        type.as.array.size = NULL;  // 动态数组
+    }
+    else
+    {
+        type.kind = TYPE_SIMPLE;
+        type.as.simple = baseType;
+    }
+    
+    return type;
 }
