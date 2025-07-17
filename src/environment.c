@@ -18,18 +18,6 @@ typedef struct
 // 静态变量用于跟踪运行时状态
 static RuntimeError error;
 
-// 运行时错误处理
-static void runtimeError(Interpreter *interpreter, const char *format, ...)
-{
-    va_list args;
-    va_start(args, format);
-    vsnprintf(interpreter->errorMessage, sizeof(interpreter->errorMessage), format, args);
-    va_end(args);
-
-    interpreter->hadError = true;
-    error.hadError = true;
-}
-
 // 初始化环境
 void initEnvironment(Environment *env, Environment *enclosing)
 {
@@ -53,10 +41,21 @@ void initEnvironment(Environment *env, Environment *enclosing)
         exit(1);
     }
 
-    // 初始化为NULL，避免后续比较出错
+    // 初始化常量标记数组
+    env->isConst = (bool *)malloc(sizeof(bool) * env->capacity);
+    if (env->isConst == NULL)
+    {
+        free(env->names);
+        free(env->values);
+        fprintf(stderr, "Memory allocation failed\n");
+        exit(1);
+    }
+
+    // 初始化为NULL/false，避免后续比较出错
     for (int i = 0; i < env->capacity; i++)
     {
         env->names[i] = NULL;
+        env->isConst[i] = false;
     }
 }
 
@@ -75,25 +74,27 @@ void defineVariable(Environment *env, const char *name, Value value)
         int newCapacity = env->capacity * 2;
         char **newNames = (char **)realloc(env->names, sizeof(char *) * newCapacity);
         Value *newValues = (Value *)realloc(env->values, sizeof(Value) * newCapacity);
+        bool *newIsConst = (bool *)realloc(env->isConst, sizeof(bool) * newCapacity);
 
-        if (newNames == NULL || newValues == NULL)
+        if (newNames == NULL || newValues == NULL || newIsConst == NULL)
         {
             fprintf(stderr, "ERROR: Failed to expand environment arrays\n");
-            if (newNames != NULL)
-                free(newNames);
-            if (newValues != NULL)
-                free(newValues);
+            if (newNames != NULL) free(newNames);
+            if (newValues != NULL) free(newValues);
+            if (newIsConst != NULL) free(newIsConst);
             return;
         }
 
         env->names = newNames;
         env->values = newValues;
+        env->isConst = newIsConst;
         env->capacity = newCapacity;
 
         // 初始化新分配的空间
         for (int i = env->count; i < env->capacity; i++)
         {
             env->names[i] = NULL;
+            env->isConst[i] = false;
         }
     }
 
@@ -102,27 +103,74 @@ void defineVariable(Environment *env, const char *name, Value value)
     char *nameCopy = (char *)malloc(name_len + 1);
     if (nameCopy == NULL)
     {
-        fprintf(stderr, "ERROR: Failed to allocate memory for variable name '%s'\n", name);
+        fprintf(stderr, "ERROR: Failed to allocate memory for variable name\n");
         return;
     }
+    strcpy(nameCopy, name);
 
-    // 手动复制字符串
-    memcpy(nameCopy, name, name_len);
-    nameCopy[name_len] = '\0';
-
-    // 验证复制是否成功
-    if (strlen(nameCopy) != name_len)
-    {
-        fprintf(stderr, "ERROR: Corrupted name copy\n");
-        free(nameCopy);
-        return;
-    }
-
-    // 分配成功后再赋值
+    // 设置变量信息
     env->names[env->count] = nameCopy;
     env->values[env->count] = copyValue(value);
+    env->isConst[env->count] = false;  // 普通变量
     env->count++;
 }
+
+//定义新常量
+void defineConstant(Environment *env, const char *name, Value value)
+{
+    if (env == NULL || name == NULL)
+    {
+        fprintf(stderr, "ERROR: NULL parameter in defineConstant\n");
+        return;
+    }
+
+    // 确保数组有足够空间
+    if (env->count >= env->capacity)
+    {
+        int newCapacity = env->capacity * 2;
+        char **newNames = (char **)realloc(env->names, sizeof(char *) * newCapacity);
+        Value *newValues = (Value *)realloc(env->values, sizeof(Value) * newCapacity);
+        bool *newIsConst = (bool *)realloc(env->isConst, sizeof(bool) * newCapacity);
+
+        if (newNames == NULL || newValues == NULL || newIsConst == NULL)
+        {
+            fprintf(stderr, "ERROR: Failed to expand environment arrays\n");
+            if (newNames != NULL) free(newNames);
+            if (newValues != NULL) free(newValues);
+            if (newIsConst != NULL) free(newIsConst);
+            return;
+        }
+
+        env->names = newNames;
+        env->values = newValues;
+        env->isConst = newIsConst;
+        env->capacity = newCapacity;
+
+        // 初始化新分配的空间
+        for (int i = env->count; i < env->capacity; i++)
+        {
+            env->names[i] = NULL;
+            env->isConst[i] = false;
+        }
+    }
+
+    // 先进行深度拷贝，然后检查结果
+    size_t name_len = strlen(name);
+    char *nameCopy = (char *)malloc(name_len + 1);
+    if (nameCopy == NULL)
+    {
+        fprintf(stderr, "ERROR: Failed to allocate memory for constant name\n");
+        return;
+    }
+    strcpy(nameCopy, name);
+
+    // 设置常量信息
+    env->names[env->count] = nameCopy;
+    env->values[env->count] = copyValue(value);
+    env->isConst[env->count] = true;  // 标记为常量
+    env->count++;
+}
+
 // 在环境中查找变量名
 static int findVariable(Environment *env, const char *name)
 {
@@ -236,6 +284,13 @@ void assignVariable(Environment *env, Token name, Value value)
 
     if (index != -1)
     {
+        // 检查是否为常量
+        if (env->isConst[index])
+        {
+            fprintf(stderr, "错误：不能对常量 '%s' 赋值\n", name.lexeme);
+            return;
+        }
+
         // 释放旧值
         freeValue(env->values[index]);
         // 设置新值
@@ -254,6 +309,7 @@ void assignVariable(Environment *env, Token name, Value value)
     fprintf(stderr, "未定义的变量 '%s'\n", name.lexeme);
 }
 
+
 // 释放环境
 void freeEnvironment(Environment *env)
 {
@@ -267,37 +323,31 @@ void freeEnvironment(Environment *env)
     {
         fprintf(stderr, "WARNING: Environment has invalid state: count=%d, capacity=%d\n",
                 env->count, env->capacity);
-        env->count = 0; // 防止进入下面的循环
+        env->count = 0;
     }
 
-    // 先释放所有值（因为值可能引用了名称）
+    // 先释放所有值
     if (env->values != NULL)
     {
-
         for (int i = 0; i < env->count; i++)
         {
-            freeValue(env->values[i]); // 这会释放函数对象但不负责释放函数名
+            freeValue(env->values[i]);
         }
-
         free(env->values);
         env->values = NULL;
     }
 
-    // 然后释放所有变量名
+    // 释放所有变量名
     if (env->names != NULL)
     {
-        // 这里添加一个检查，如果环境是全局环境，处理方式可能不同
-        // 通常可以通过检查env->enclosing是否为NULL来确定是否为全局环境
         bool isGlobalEnv = (env->enclosing == NULL);
-
         for (int i = 0; i < env->count; i++)
         {
             if (env->names[i] != NULL)
             {
-                // 对于全局环境中的原生函数名，我们可以跳过释放
-                // 因为它们可能已经在freeValue中被处理
                 if (isGlobalEnv && i < 3)
-                { // 假设前3个是原生函数
+                {
+                    // 跳过全局环境中的原生函数名
                 }
                 else
                 {
@@ -308,6 +358,13 @@ void freeEnvironment(Environment *env)
         }
         free(env->names);
         env->names = NULL;
+    }
+
+    // 释放常量标记数组
+    if (env->isConst != NULL)
+    {
+        free(env->isConst);
+        env->isConst = NULL;
     }
 
     // 重置环境状态

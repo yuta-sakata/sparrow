@@ -23,6 +23,7 @@ static Value evaluateArrayAssign(Interpreter *interpreter, Expr *expr);
 
 static void executeExpression(Interpreter *interpreter, Stmt *stmt);
 static void executeVar(Interpreter *interpreter, Stmt *stmt);
+static void executeConst(Interpreter *interpreter, Stmt *stmt);
 static void executeMultiVar(Interpreter *interpreter, Stmt *stmt);
 static void executeBlock(Interpreter *interpreter, Stmt **statements, int count, Environment *environment);
 static void executeIf(Interpreter *interpreter, Stmt *stmt);
@@ -105,6 +106,9 @@ void execute(Interpreter *interpreter, Stmt *stmt)
 		break;
 	case STMT_VAR:
 		executeVar(interpreter, stmt);
+		break;
+	case STMT_CONST:
+		executeConst(interpreter, stmt);
 		break;
 	case STMT_MULTI_VAR:
 		executeMultiVar(interpreter, stmt);
@@ -204,6 +208,33 @@ static void executeVar(Interpreter *interpreter, Stmt *stmt)
 	defineVariable(interpreter->environment, stmt->as.var.name.lexeme, value);
 	freeValue(value);
 }
+
+static void executeConst(Interpreter *interpreter, Stmt *stmt)
+{
+	Value value = createNull();
+
+	// 常量必须有初始值
+	if (stmt->as.constStmt.initializer != NULL)
+	{
+		value = evaluate(interpreter, stmt->as.constStmt.initializer);
+		if (interpreter->hadError)
+		{
+			freeValue(value);
+			return;
+		}
+	}
+	else
+	{
+		runtimeError(interpreter, "Constants must be initialized.");
+		return;
+	}
+
+	// 定义常量
+	defineConstant(interpreter->environment, stmt->as.constStmt.name.lexeme, value);
+
+	freeValue(value);
+}
+
 // 解析多变量声明
 static void executeMultiVar(Interpreter *interpreter, Stmt *stmt)
 {
@@ -287,11 +318,12 @@ static Value evaluateUnary(Interpreter *interpreter, Expr *expr)
 		freeValue(right);
 		return createBool(!isTruthy);
 	}
+	default:
+		// 如果不是已知的一元运算符
+		freeValue(right);
+		runtimeError(interpreter, "未知的一元运算符。");
+		return createNull();
 	}
-
-	// 如果不是已知的一元运算符
-	freeValue(right);
-	return createNull();
 }
 
 static Value evaluateBinary(Interpreter *interpreter, Expr *expr)
@@ -1108,10 +1140,9 @@ static Value evaluateCall(Interpreter *interpreter, Expr *expr)
 	return result;
 }
 
-
 /**
  * 执行函数定义语句，创建函数对象并将其绑定到当前环境
- * 
+ *
  * 该函数负责：
  * 1. 创建并初始化函数对象
  * 2. 分配并复制函数名
@@ -1121,15 +1152,15 @@ static Value evaluateCall(Interpreter *interpreter, Expr *expr)
  * 6. 设置闭包环境（当前为全局环境）
  * 7. 检查是否为 main 函数并进行特殊处理
  * 8. 将函数对象包装为 Value 并定义到当前环境中
- * 
+ *
  * 内存管理：
  * - 动态分配函数对象和相关字符串内存
  * - 在分配失败时进行完整的内存清理
  * - 参数名数组的分配采用逐个分配策略，失败时清理已分配部分
- * 
+ *
  * @param interpreter 解释器实例，包含环境和全局状态
  * @param stmt 函数定义语句，包含函数名、参数、返回类型和函数体
- * 
+ *
  * @note 如果内存分配失败，会调用 runtimeError 并提前返回
  * @note main 函数会被特殊标记并存储在解释器中
  */
@@ -1232,18 +1263,18 @@ static void executeReturn(Interpreter *interpreter, Stmt *stmt)
 
 /**
  * 调用函数并执行函数体
- * 
+ *
  * 此函数负责执行用户定义的函数调用，包括参数验证、环境设置、
  * 参数绑定和函数体执行。
- * 
+ *
  * @param interpreter 解释器实例指针，用于执行函数体和错误处理
  * @param function 要调用的函数对象指针，包含函数的元数据和函数体
  * @param arguments 传入的参数值数组
  * @param argCount 传入参数的数量
- * 
+ *
  * @return Value 函数的返回值。如果函数有显式返回语句则返回该值，
  *               否则返回null值。如果参数数量不匹配则返回null值。
- * 
+ *
  * 函数执行流程：
  * 1. 验证传入参数数量是否与函数定义的参数数量匹配
  * 2. 创建新的执行环境，父环境设置为函数的闭包环境
@@ -1254,7 +1285,7 @@ static void executeReturn(Interpreter *interpreter, Stmt *stmt)
  * 7. 恢复解释器的原始环境
  * 8. 清理函数执行环境
  * 9. 返回函数的执行结果
- * 
+ *
  * @note 此函数会修改全局的returnStatus状态
  * @note 函数执行过程中会临时切换解释器环境
  */

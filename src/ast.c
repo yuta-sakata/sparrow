@@ -132,6 +132,21 @@ Stmt *createVarStmt(Token name, TypeAnnotation type, Expr *initializer)
     return stmt;
 }
 
+// 创建常量声明
+Stmt *createConstStmt(Token name, TypeAnnotation type, Expr *initializer)
+{
+    Stmt *stmt = (Stmt *)malloc(sizeof(Stmt));
+    if (stmt == NULL)
+    {
+        return NULL;
+    }
+    stmt->type = STMT_CONST;
+    stmt->as.constStmt.name = name;
+    stmt->as.constStmt.type = type;
+    stmt->as.constStmt.initializer = initializer;
+    return stmt;
+}
+
 // 创建代码块
 Stmt *createBlockStmt(Stmt **statements, int count)
 {
@@ -575,6 +590,12 @@ void freeStmt(Stmt *stmt)
         break;
     case STMT_VAR:
         freeExpr(stmt->as.var.initializer);
+        break;
+    case STMT_CONST:  // 添加常量声明的内存释放
+        if (stmt->as.constStmt.initializer != NULL)
+        {
+            freeExpr(stmt->as.constStmt.initializer);
+        }
         break;
     case STMT_MULTI_VAR:
         if (stmt->as.multiVar.initializer != NULL)

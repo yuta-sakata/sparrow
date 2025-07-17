@@ -18,6 +18,7 @@ static Keyword keywords[] = {
     {"return", 6, TOKEN_RETURN},
     {"function", 8, TOKEN_FUNCTION},
     {"var", 3, TOKEN_VAR},
+    {"const", 5, TOKEN_CONST},
     {"void", 4, TOKEN_VOID},
     {"int", 3, TOKEN_INT},
     {"float", 5, TOKEN_FLOAT_TYPE},
@@ -332,8 +333,6 @@ static Token number(Lexer *lexer)
 // 处理字符串
 static Token string(Lexer *lexer)
 {
-    // 保存字符串的起始位置（跳过开头的引号）
-    const char *start = lexer->current;
     
     // 分配缓冲区
     int bufferSize = 256;

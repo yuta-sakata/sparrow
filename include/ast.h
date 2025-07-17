@@ -31,6 +31,7 @@ typedef enum
 {
     STMT_EXPRESSION, // 表达式语句
     STMT_VAR,        // 变量声明
+    STMT_CONST,      // 常量声明
     STMT_MULTI_VAR,  // 多变量声明
     STMT_BLOCK,      // 代码块
     STMT_IF,         // if语句
@@ -39,6 +40,14 @@ typedef enum
     STMT_FUNCTION,   // 函数声明
     STMT_RETURN,     // return语句
 } StmtType;
+
+// 常量声明语句结构
+typedef struct
+{
+    Token name;
+    TypeAnnotation type;
+    Expr *initializer;  // 常量必须有初始值
+} ConstStmt;
 
 // 多变量声明语句结构
 typedef struct
@@ -227,6 +236,7 @@ struct Stmt
     {
         ExpressionStmt expression;
         VarStmt var;
+        ConstStmt constStmt;
         MultiVarStmt multiVar;
         BlockStmt block;
         IfStmt ifStmt;
@@ -255,6 +265,7 @@ Expr *createArrayAssignExpr(Expr *array, Expr *index, Expr *value);
 // 创建语句节点的函数
 Stmt *createExpressionStmt(Expr *expression);
 Stmt *createVarStmt(Token name, TypeAnnotation type, Expr *initializer);
+Stmt *createConstStmt(Token name, TypeAnnotation type, Expr *initializer);
 Stmt *createMultiVarStmt(Token *names, int count, TypeAnnotation type, Expr *initializer);
 Stmt *createBlockStmt(Stmt **statements, int count);
 Stmt *createIfStmt(Expr *condition, Stmt *thenBranch, Stmt *elseBranch);

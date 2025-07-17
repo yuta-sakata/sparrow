@@ -21,6 +21,7 @@ static Expr *arrayLiteral(Parser *parser);
 static Stmt *declaration(Parser *parser);
 static Stmt *functionDeclaration(Parser *parser);
 static Stmt *varDeclaration(Parser *parser);
+static Stmt *constDeclaration(Parser *parser);
 static Stmt *statement(Parser *parser);
 static Stmt *expressionStatement(Parser *parser);
 static Stmt *blockStatement(Parser *parser);
@@ -221,6 +222,11 @@ static Stmt *declaration(Parser *parser)
         {
             return createMultiVarStmt(names, count, tokenToTypeAnnotation(type.type), initializer);
         }
+    }
+
+    if (match(parser, TOKEN_CONST))  // 添加常量声明解析
+    {
+        return constDeclaration(parser);
     }
 
     return statement(parser);
@@ -506,6 +512,67 @@ static Stmt *varDeclaration(Parser *parser)
         return NULL;
     }
     return createVarStmt(name, tokenToTypeAnnotation(type.type), initializer);
+}
+
+static Stmt *constDeclaration(Parser *parser)
+{
+    Token name = consume(parser, TOKEN_IDENTIFIER, "Expect constant name.");
+    if (parser->hadError)
+        return NULL;
+
+    Token type;
+    type.type = TOKEN_VOID; // 默认值
+
+    // 处理类型注解
+    if (match(parser, TOKEN_COLON))
+    {
+        if (match(parser, TOKEN_INT))
+        {
+            type = previous(parser);
+        }
+        else if (match(parser, TOKEN_FLOAT_TYPE))
+        {
+            type = previous(parser);
+        }
+        else if (match(parser, TOKEN_STRING_TYPE))
+        {
+            type = previous(parser);
+        }
+        else if (match(parser, TOKEN_BOOL))
+        {
+            type = previous(parser);
+        }
+        else
+        {
+            error(parser, "Expected type annotation after ':'.");
+            return NULL;
+        }
+    }
+
+    // 常量必须有初始值
+    if (!match(parser, TOKEN_ASSIGN))
+    {
+        error(parser, "Constants must be initialized.");
+        return NULL;
+    }
+
+    Expr *initializer = expression(parser);
+    if (parser->hadError)
+    {
+        if (initializer)
+            freeExpr(initializer);
+        return NULL;
+    }
+
+    consume(parser, TOKEN_SEMICOLON, "Expect ';' after constant declaration.");
+    if (parser->hadError)
+    {
+        if (initializer)
+            freeExpr(initializer);
+        return NULL;
+    }
+
+    return createConstStmt(name, tokenToTypeAnnotation(type.type), initializer);
 }
 
 // 解析语句
@@ -1160,6 +1227,8 @@ static void synchronize(Parser *parser)
         switch (peek(parser).type)
         {
         case TOKEN_FUNCTION:
+        case TOKEN_VAR:
+        case TOKEN_CONST:
         case TOKEN_INT:
         case TOKEN_FLOAT_TYPE:
         case TOKEN_STRING_TYPE:
