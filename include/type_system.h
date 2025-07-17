@@ -17,22 +17,25 @@ typedef enum
 } BaseType;
 
 // 类型注解结构
-typedef struct TypeAnnotation {
-    enum {
+typedef struct TypeAnnotation
+{
+    enum
+    {
         TYPE_SIMPLE,
         TYPE_ARRAY
     } kind;
-    union {
-        BaseType simple;     // 简单类型
-        struct {
-            BaseType elementType;  // 数组元素类型
-            struct Expr *size;           // 数组大小（NULL表示动态数组）
+    union
+    {
+        BaseType simple; // 简单类型
+        struct
+        {
+            BaseType elementType; // 数组元素类型
+            struct Expr *size;    // 数组大小（NULL表示动态数组）
         } array;
     } as;
 } TypeAnnotation;
 
-// 类型操作函数
-const char *annotationToString(TypeAnnotation type);
-TypeAnnotation tokenToTypeAnnotation(int tokenType);
+const char *annotationToString(TypeAnnotation type);// 获取类型注解的字符串表示
+TypeAnnotation tokenToTypeAnnotation(int tokenType);// 将令牌类型转换为类型注解
 
 #endif // SPARROW_TYPE_SYSTEM_H

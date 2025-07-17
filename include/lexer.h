@@ -16,31 +16,31 @@ typedef enum
 	TOKEN_STRING,	  // 字符串
 
 	// 运算符
-	TOKEN_PLUS,		// +
-	TOKEN_MINUS,	// -
-	TOKEN_PLUS_PLUS,    // ++
-    TOKEN_MINUS_MINUS,  // --
-	TOKEN_MULTIPLY, // *
-	TOKEN_DIVIDE,	// /
-	TOKEN_MODULO,	// %
-	TOKEN_ASSIGN,	// =
-	TOKEN_EQ,		// ==
-	TOKEN_NE,		// !=
-	TOKEN_LT,		// <
-	TOKEN_LE,		// <=
-	TOKEN_GT,		// >
-	TOKEN_GE,		// >=
-	TOKEN_NOT,		// !
-	TOKEN_AND,		// &&
-	TOKEN_OR,		// ||
+	TOKEN_PLUS,		   // +
+	TOKEN_MINUS,	   // -
+	TOKEN_PLUS_PLUS,   // ++
+	TOKEN_MINUS_MINUS, // --
+	TOKEN_MULTIPLY,	   // *
+	TOKEN_DIVIDE,	   // /
+	TOKEN_MODULO,	   // %
+	TOKEN_ASSIGN,	   // =
+	TOKEN_EQ,		   // ==
+	TOKEN_NE,		   // !=
+	TOKEN_LT,		   // <
+	TOKEN_LE,		   // <=
+	TOKEN_GT,		   // >
+	TOKEN_GE,		   // >=
+	TOKEN_NOT,		   // !
+	TOKEN_AND,		   // &&
+	TOKEN_OR,		   // ||
 
 	// 分隔符
 	TOKEN_LPAREN,	 // (
 	TOKEN_RPAREN,	 // )
 	TOKEN_LBRACE,	 // {
 	TOKEN_RBRACE,	 // }
-	TOKEN_LBRACKET,     // [
-    TOKEN_RBRACKET,     // ]
+	TOKEN_LBRACKET,	 // [
+	TOKEN_RBRACKET,	 // ]
 	TOKEN_SEMICOLON, // ;
 	TOKEN_COMMA,	 // ,
 	TOKEN_COLON,	 // :
@@ -81,9 +81,9 @@ typedef struct
 	int line;	  // 行号
 	union
 	{
-		int intValue;
-		double floatValue;
-		char *stringValue;
+		int intValue;	   // 整数值
+		double floatValue; // 浮点数值
+		char *stringValue; // 字符串值
 	} value;
 } Token;
 
@@ -95,11 +95,10 @@ typedef struct
 	int line;			 // 当前行号
 } Lexer;
 
-// 函数声明
-void initLexer(Lexer *lexer, const char *source);
-Token nextToken(Lexer *lexer);
-void freeToken(Token *token);
-const char *getTokenName(TokenType type);
-Token *performLexicalAnalysis(const char *source, int *tokenCount);
+void initLexer(Lexer *lexer, const char *source);					// 初始化词法分析器
+Token nextToken(Lexer *lexer);										// 获取下一个标记
+void freeToken(Token *token);										// 释放标记内存
+const char *getTokenName(TokenType type);							// 获取标记名称
+Token *performLexicalAnalysis(const char *source, int *tokenCount); // 执行词法分析
 
 #endif // SPARROW_LEXER_H

@@ -162,7 +162,22 @@ static int match(Lexer *lexer, char expected)
     return 1;
 }
 
-// 跳过空白字符和注释
+
+/**
+ * 跳过词法分析器当前位置的空白字符和注释
+ * 
+ * 该函数会连续跳过以下内容：
+ * - 空白字符：空格、回车符、制表符
+ * - 换行符（同时更新行号计数器）
+ * - 单行注释
+ * - 多行注释
+ * 
+ * @param lexer 指向词法分析器结构的指针
+ * 
+ * @note 函数会自动处理嵌套在多行注释中的换行符，正确维护行号计数
+ * @note 如果遇到单独的 '/' 字符（不是注释开始），函数会停止并返回
+ * @note 对于未结束的多行注释，函数会安全地处理到文件末尾
+ */
 static void skipWhitespaceAndComments(Lexer *lexer)
 {
     for (;;)
@@ -222,7 +237,21 @@ static void skipWhitespaceAndComments(Lexer *lexer)
     }
 }
 
-// 创建一个新的标记
+
+/**
+ * 创建一个新的词法单元(Token)
+ * 
+ * 此函数根据给定的词法分析器状态和词法单元类型创建一个新的Token。
+ * 它会计算从源码起始位置到当前位置的词素长度，分配内存来存储词素字符串，
+ * 并设置相应的行号信息。函数执行完毕后会重置词法分析器的源码指针。
+ * 
+ * @param lexer 指向词法分析器结构体的指针，包含当前解析状态
+ * @param type 要创建的词法单元类型
+ * @return 返回创建的Token结构体，包含类型、词素字符串和行号信息
+ * 
+ * @note 调用者需要负责释放返回Token中lexeme字段分配的内存
+ * @warning 确保lexer->current >= lexer->source，否则可能导致未定义行为
+ */
 static Token makeToken(Lexer *lexer, TokenType type)
 {
     Token token;
@@ -245,7 +274,20 @@ static Token makeToken(Lexer *lexer, TokenType type)
     return token;
 }
 
-// 创建错误标记
+
+/**
+ * 创建一个错误类型的Token
+ * 
+ * 此函数用于在词法分析过程中遇到错误时创建一个错误Token。
+ * 该Token包含错误类型、错误消息和出错的行号信息。
+ * 
+ * @param lexer 指向词法分析器实例的指针，用于获取当前行号
+ * @param message 错误消息字符串，描述具体的错误信息
+ * @return Token 返回一个类型为TOKEN_ERROR的Token结构体
+ * 
+ * @note 函数会为错误消息分配内存，调用者需要确保在适当时候释放Token中的lexeme内存
+ * @warning 如果内存分配失败，token.lexeme将为NULL
+ */
 static Token errorToken(Lexer *lexer, const char *message)
 {
     Token token;
@@ -334,7 +376,34 @@ static Token number(Lexer *lexer)
     return token;
 }
 
-// 处理字符串
+
+/**
+ * 解析字符串字面量
+ * 
+ * 从当前位置开始解析一个由双引号包围的字符串字面量，支持标准的转义序列。
+ * 函数会动态分配内存来存储解析后的字符串内容，并处理各种转义字符。
+ * 
+ * 支持的转义序列：
+ * - \n: 换行符
+ * - \t: 制表符  
+ * - \r: 回车符
+ * - \\: 反斜杠
+ * - \": 双引号
+ * - \0: 空字符
+ * - \b: 退格符
+ * - \f: 换页符
+ * - \v: 垂直制表符
+ * - \a: 响铃符
+ * - \/: 斜杠
+ * - 其他: 保持原样
+ * 
+ * @param lexer 词法分析器指针，包含当前解析状态
+ * @return Token 返回字符串类型的token，如果解析失败则返回错误token
+ * 
+ * @note 函数会为字符串内容分配内存，调用者需要负责释放token.value.stringValue
+ * @note 如果遇到未终止的字符串或内存分配失败，会返回相应的错误token
+ * @note 初始缓冲区大小为256字节，根据需要自动扩展
+ */
 static Token string(Lexer *lexer)
 {
     
@@ -469,7 +538,31 @@ static Token string(Lexer *lexer)
     return token;
 }
 
-// 获取下一个标记
+
+/**
+ * 词法分析器的核心函数，从输入源中获取下一个词法单元
+ * 
+ * 该函数实现了完整的词法分析逻辑，能够识别和返回各种类型的词法单元：
+ * - 标识符和关键字
+ * - 数字字面量
+ * - 单字符操作符：括号、分隔符、算术运算符等
+ * - 双字符操作符：++、--、==、!=、<=、>=、&&、||
+ * - 字符串字面量
+ * - 文件结束标记
+ * 
+ * 处理流程：
+ * 1. 跳过空白字符和注释
+ * 2. 记录当前位置作为词法单元的起始位置
+ * 3. 检查是否到达文件末尾
+ * 4. 根据当前字符的类型进行相应的词法分析
+ * 5. 返回构造的词法单元或错误信息
+ * 
+ * @param lexer 词法分析器实例的指针，包含输入源和当前位置信息
+ * @return Token 返回识别到的词法单元，包括类型、位置和长度信息
+ * 
+ * @note 对于单独出现的 '&' 和 '|' 字符会返回错误，因为它们必须成对出现
+ * @note 遇到无法识别的字符时会返回通用错误信息
+ */
 Token nextToken(Lexer *lexer)
 {
     skipWhitespaceAndComments(lexer);
@@ -564,7 +657,19 @@ Token nextToken(Lexer *lexer)
     return errorToken(lexer, "Unexpected character.");
 }
 
-// 释放标记占用的内存
+
+/**
+ * 释放Token结构体及其相关内存
+ * 
+ * 此函数负责安全地释放Token结构体中动态分配的内存，包括词素(lexeme)
+ * 和字符串类型的值。函数会检查指针的有效性，防止重复释放或空指针访问。
+ * 
+ * @param token 指向要释放的Token结构体的指针，可以为NULL
+ * 
+ * @note 函数会将释放后的指针设置为NULL，防止悬空指针
+ * @note 对于字符串类型的token，会额外释放其字符串值的内存
+ * @note 传入NULL指针是安全的，函数会直接返回
+ */
 void freeToken(Token *token)
 {
     if (token == NULL)

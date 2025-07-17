@@ -6,6 +6,18 @@
 #include "interpreter.h"
 #include "file_utils.h"
 
+/**
+ * 执行程序语句
+ * 
+ * 该函数负责执行一系列解析后的语句。它会创建并初始化一个解释器实例，
+ * 执行所有传入的语句，检查运行时错误，并在完成后清理资源。
+ * 
+ * @param statements 指向语句指针数组的指针，包含要执行的所有语句
+ * @param stmtCount 语句数组中语句的数量
+ * 
+ * @note 如果在执行过程中发生运行时错误，错误信息将输出到stderr
+ * @note 函数会自动管理解释器的生命周期，包括初始化和资源释放
+ */
 void executeProgram(Stmt **statements, int stmtCount)
 {
 	Interpreter interpreter;
