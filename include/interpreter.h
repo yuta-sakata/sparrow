@@ -8,6 +8,7 @@
 typedef struct {
     Environment* globals;   // 全局环境
     Environment* environment; // 当前环境
+    StaticStorage *staticStorage;  // 添加静态存储
     bool hadError;
     char errorMessage[256];
     bool hasMainFunction;  // 标记是否找到 main 函数

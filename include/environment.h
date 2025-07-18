@@ -16,6 +16,14 @@ struct Environment {
     bool* isConst;          // 标记是否为常量
 };
 
+typedef struct StaticStorage {
+    char **names;
+    Value *values;
+    bool *isConst;
+    int count;
+    int capacity;
+} StaticStorage;
+
 // 初始化环境
 void initEnvironment(Environment* env, Environment* enclosing);
 
@@ -36,6 +44,12 @@ void freeEnvironment(Environment* env);
 
 // 查找变量的索引
 Value *getVariableRef(Environment *env, const char *name);
+
+void initStaticStorage(StaticStorage *storage);
+void defineStaticVariable(StaticStorage *storage, const char *name, Value value, bool isConst);
+Value getStaticVariable(StaticStorage *storage, const char *name);
+void assignStaticVariable(StaticStorage *storage, const char *name, Value value);
+void freeStaticStorage(StaticStorage *storage);
 
 
 

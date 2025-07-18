@@ -61,6 +61,7 @@ typedef enum
 	TOKEN_STRING_TYPE, // string
 	TOKEN_BOOL,		   // bool
 	TOKEN_CONST,	   // const
+	TOKEN_STATIC,	   // static
 	TOKEN_SWITCH,	   // switch
 	TOKEN_CASE,		   // case
 	TOKEN_DEFAULT,	   // default

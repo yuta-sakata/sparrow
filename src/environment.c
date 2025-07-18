@@ -515,3 +515,122 @@ Value *getVariableRef(Environment *env, const char *name)
 
     return NULL; // 未找到
 }
+
+void initStaticStorage(StaticStorage *storage) {
+    storage->capacity = 8;
+    storage->count = 0;
+    
+    storage->names = (char **)malloc(sizeof(char *) * storage->capacity);
+    storage->values = (Value *)malloc(sizeof(Value) * storage->capacity);
+    storage->isConst = (bool *)malloc(sizeof(bool) * storage->capacity);
+    
+    if (storage->names == NULL || storage->values == NULL || storage->isConst == NULL) {
+        fprintf(stderr, "静态存储内存分配失败\n");
+        exit(1);
+    }
+    
+    for (int i = 0; i < storage->capacity; i++) {
+        storage->names[i] = NULL;
+        storage->isConst[i] = false;
+    }
+}
+void defineStaticVariable(StaticStorage *storage, const char *name, Value value, bool isConst) {
+    if (storage == NULL || name == NULL) {
+        fprintf(stderr, "ERROR: NULL parameter in defineStaticVariable\n");
+        return;
+    }
+    
+    // 检查是否需要扩容
+    if (storage->count >= storage->capacity) {
+        int newCapacity = storage->capacity * 2;
+        char **newNames = (char **)realloc(storage->names, sizeof(char *) * newCapacity);
+        Value *newValues = (Value *)realloc(storage->values, sizeof(Value) * newCapacity);
+        bool *newIsConst = (bool *)realloc(storage->isConst, sizeof(bool) * newCapacity);
+        
+        if (newNames == NULL || newValues == NULL || newIsConst == NULL) {
+            fprintf(stderr, "ERROR: Failed to expand static storage\n");
+            return;
+        }
+        
+        storage->names = newNames;
+        storage->values = newValues;
+        storage->isConst = newIsConst;
+        storage->capacity = newCapacity;
+        
+        for (int i = storage->count; i < storage->capacity; i++) {
+            storage->names[i] = NULL;
+            storage->isConst[i] = false;
+        }
+    }
+    
+    // 复制名称
+    size_t nameLen = strlen(name);
+    char *nameCopy = (char *)malloc(nameLen + 1);
+    if (nameCopy == NULL) {
+        fprintf(stderr, "ERROR: Failed to allocate memory for static variable name\n");
+        return;
+    }
+    strcpy(nameCopy, name);
+    
+    storage->names[storage->count] = nameCopy;
+    storage->values[storage->count] = copyValue(value);
+    storage->isConst[storage->count] = isConst;
+    storage->count++;
+}
+
+Value getStaticVariable(StaticStorage *storage, const char *name) {
+    if (storage == NULL || name == NULL) {
+        return createNull();
+    }
+    
+    for (int i = 0; i < storage->count; i++) {
+        if (storage->names[i] != NULL && strcmp(storage->names[i], name) == 0) {
+            return copyValue(storage->values[i]);
+        }
+    }
+    
+    return createNull();
+}
+
+void assignStaticVariable(StaticStorage *storage, const char *name, Value value) {
+    if (storage == NULL || name == NULL) {
+        fprintf(stderr, "ERROR: NULL parameter in assignStaticVariable\n");
+        return;
+    }
+    
+    for (int i = 0; i < storage->count; i++) {
+        if (storage->names[i] != NULL && strcmp(storage->names[i], name) == 0) {
+            if (storage->isConst[i]) {
+                fprintf(stderr, "ERROR: Cannot assign to static constant '%s'\n", name);
+                return;
+            }
+            
+            freeValue(storage->values[i]);
+            storage->values[i] = copyValue(value);
+            return;
+        }
+    }
+    
+    fprintf(stderr, "ERROR: Undefined static variable '%s'\n", name);
+}
+
+void freeStaticStorage(StaticStorage *storage) {
+    if (storage == NULL) return;
+    
+    for (int i = 0; i < storage->count; i++) {
+        if (storage->names[i] != NULL) {
+            free(storage->names[i]);
+        }
+        freeValue(storage->values[i]);
+    }
+    
+    free(storage->names);
+    free(storage->values);
+    free(storage->isConst);
+    
+    storage->names = NULL;
+    storage->values = NULL;
+    storage->isConst = NULL;
+    storage->count = 0;
+    storage->capacity = 0;
+}

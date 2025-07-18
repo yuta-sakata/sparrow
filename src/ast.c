@@ -127,8 +127,20 @@ Stmt *createVarStmt(Token name, TypeAnnotation type, Expr *initializer)
     stmt->type = STMT_VAR;
     stmt->as.var.name = name;
     stmt->as.var.type = type;
-
     stmt->as.var.initializer = initializer;
+    stmt->as.var.isStatic = false; // 默认非 static
+    return stmt;
+}
+
+// 创建 static 变量声明
+Stmt *createStaticVarStmt(Token name, TypeAnnotation type, Expr *initializer)
+{
+    Stmt *stmt = (Stmt *)malloc(sizeof(Stmt));
+    stmt->type = STMT_VAR;
+    stmt->as.var.name = name;
+    stmt->as.var.type = type;
+    stmt->as.var.initializer = initializer;
+    stmt->as.var.isStatic = true;
     return stmt;
 }
 
@@ -144,6 +156,8 @@ Stmt *createConstStmt(Token name, TypeAnnotation type, Expr *initializer)
     stmt->as.constStmt.name = name;
     stmt->as.constStmt.type = type;
     stmt->as.constStmt.initializer = initializer;
+    stmt->as.constStmt.isStatic = false; // 默认非 static
+
     return stmt;
 }
 
@@ -229,6 +243,15 @@ Stmt *createFunctionStmt(Token name, Token *params, bool *paramHasVar, TypeAnnot
     stmt->as.function.returnType = returnType;
 
     stmt->as.function.body = body;
+    stmt->as.function.isStatic = false;
+
+    return stmt;
+}
+
+Stmt *createStaticFunctionStmt(Token name, Token *params, bool *paramHasVar, TypeAnnotation *paramTypes, int paramCount, TypeAnnotation returnType, Stmt *body)
+{
+    Stmt *stmt = createFunctionStmt(name, params, paramHasVar, paramTypes, paramCount, returnType, body);
+    stmt->as.function.isStatic = true;
     return stmt;
 }
 // 创建return语句
@@ -270,7 +293,7 @@ Stmt *createBreakStmt(Token keyword)
 }
 
 Stmt *createEnumStmt(Token name, EnumMember *members, int memberCount)
-{    
+{
     Stmt *stmt = (Stmt *)malloc(sizeof(Stmt));
     if (stmt == NULL)
     {
@@ -280,8 +303,7 @@ Stmt *createEnumStmt(Token name, EnumMember *members, int memberCount)
     stmt->as.enumStmt.name = name;
     stmt->as.enumStmt.members = members;
     stmt->as.enumStmt.memberCount = memberCount;
-    
-    
+
     return stmt;
 }
 

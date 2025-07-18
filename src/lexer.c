@@ -24,6 +24,7 @@ static Keyword keywords[] = {
     {"default", 7, TOKEN_DEFAULT},
     {"break", 5, TOKEN_BREAK},
     {"const", 5, TOKEN_CONST},
+    {"static", 6, TOKEN_STATIC},
     {"void", 4, TOKEN_VOID},
     {"int", 3, TOKEN_INT},
     {"float", 5, TOKEN_FLOAT_TYPE},
@@ -772,6 +773,10 @@ const char *getTokenName(TokenType type)
         return "ERROR";
     case TOKEN_CONST:
         return "CONST";
+    case TOKEN_STATIC:
+        return "STATIC";
+    case TOKEN_VAR:
+        return "VAR";
     case TOKEN_SWITCH:
         return "SWITCH";
     case TOKEN_CASE:

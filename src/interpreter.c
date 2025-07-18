@@ -80,6 +80,15 @@ void initInterpreter(Interpreter *interpreter)
 	interpreter->hasMainFunction = false;							   // 初始化为 false
 	interpreter->mainFunction = NULL;								   // 初始化为 NULL
 
+	// 初始化静态存储
+	interpreter->staticStorage = (StaticStorage *)malloc(sizeof(StaticStorage));
+	if (interpreter->staticStorage == NULL)
+	{
+		fprintf(stderr, "ERROR: Failed to allocate static storage\n");
+		exit(1);
+	}
+	initStaticStorage(interpreter->staticStorage);
+
 	registerAllNativeFunctions(interpreter);
 }
 
@@ -269,15 +278,25 @@ static void executeVar(Interpreter *interpreter, Stmt *stmt)
 		value = evaluate(interpreter, stmt->as.var.initializer);
 	}
 
-	defineVariable(interpreter->environment, stmt->as.var.name.lexeme, value);
+	if (stmt->as.var.isStatic)
+	{
+		// 静态变量存储在静态存储中
+		defineStaticVariable(interpreter->staticStorage, stmt->as.var.name.lexeme, value, false);
+	}
+	else
+	{
+		// 普通变量存储在当前环境中
+		defineVariable(interpreter->environment, stmt->as.var.name.lexeme, value);
+	}
+
 	freeValue(value);
 }
 
+// 更新常量执行函数
 static void executeConst(Interpreter *interpreter, Stmt *stmt)
 {
 	Value value = createNull();
 
-	// 常量必须有初始值
 	if (stmt->as.constStmt.initializer != NULL)
 	{
 		value = evaluate(interpreter, stmt->as.constStmt.initializer);
@@ -293,8 +312,16 @@ static void executeConst(Interpreter *interpreter, Stmt *stmt)
 		return;
 	}
 
-	// 定义常量
-	defineConstant(interpreter->environment, stmt->as.constStmt.name.lexeme, value);
+	if (stmt->as.constStmt.isStatic)
+	{
+		// 静态常量存储在静态存储中
+		defineStaticVariable(interpreter->staticStorage, stmt->as.constStmt.name.lexeme, value, true);
+	}
+	else
+	{
+		// 普通常量存储在当前环境中
+		defineConstant(interpreter->environment, stmt->as.constStmt.name.lexeme, value);
+	}
 
 	freeValue(value);
 }
@@ -794,31 +821,43 @@ static Value evaluateGrouping(Interpreter *interpreter, Expr *expr)
 // 实现变量表达式求值
 static Value evaluateVariable(Interpreter *interpreter, Expr *expr)
 {
-	// 安全检查
-	if (expr == NULL)
+	// 首先在静态存储中查找
+	Value result = getStaticVariable(interpreter->staticStorage, expr->as.variable.name.lexeme);
+
+	// 如果在静态存储中找到了，直接返回
+	if (result.type != VAL_NULL)
 	{
-		printf("ERROR: NULL expression in evaluateVariable\n");
-		return createNull();
+		return result;
 	}
 
-	if (expr->as.variable.name.lexeme == NULL)
-	{
-		printf("ERROR: NULL variable name in evaluateVariable\n");
-		return createNull();
-	}
+	// 如果在静态存储中没找到，在当前环境中查找
+	result = getVariable(interpreter->environment, expr->as.variable.name);
 
-	Environment *env = interpreter->environment;
-	int level = 0;
-	while (env != NULL)
+	// 如果还没找到，尝试查找静态函数
+	if (result.type == VAL_NULL && interpreter->hadError)
 	{
-		env = env->enclosing;
-		level++;
-	}
+		// 重置错误状态
+		interpreter->hadError = false;
+		interpreter->errorMessage[0] = '\0';
 
-	Value result = getVariable(interpreter->environment, expr->as.variable.name);
+		// 构造静态函数名
+		char *staticName = malloc(strlen(expr->as.variable.name.lexeme) + 8);
+		if (staticName != NULL)
+		{
+			sprintf(staticName, "static_%s", expr->as.variable.name.lexeme);
+
+			Token staticToken = expr->as.variable.name;
+			staticToken.lexeme = staticName;
+
+			result = getVariable(interpreter->globals, staticToken);
+
+			free(staticName);
+		}
+	}
 
 	return result;
 }
+
 // 实现赋值表达式求值
 static Value evaluateAssign(Interpreter *interpreter, Expr *expr)
 {
@@ -827,12 +866,27 @@ static Value evaluateAssign(Interpreter *interpreter, Expr *expr)
 	if (interpreter->hadError)
 		return createNull();
 
-	assignVariable(interpreter->environment, expr->as.assign.name, value);
+	// 首先尝试在静态存储中赋值
+	bool foundInStatic = false;
+	for (int i = 0; i < interpreter->staticStorage->count; i++)
+	{
+		if (interpreter->staticStorage->names[i] != NULL &&
+			strcmp(interpreter->staticStorage->names[i], expr->as.assign.name.lexeme) == 0)
+		{
+			foundInStatic = true;
+			assignStaticVariable(interpreter->staticStorage, expr->as.assign.name.lexeme, value);
+			break;
+		}
+	}
 
-	// 赋值表达式的值是被赋的值
+	// 如果不是静态变量，尝试在当前环境中赋值
+	if (!foundInStatic)
+	{
+		assignVariable(interpreter->environment, expr->as.assign.name, value);
+	}
+
 	return value;
 }
-
 Value evaluatePostfix(Interpreter *interpreter, Expr *expr)
 {
 	// 确保操作数是变量
@@ -1656,8 +1710,23 @@ static void executeFunction(Interpreter *interpreter, Stmt *stmt)
 		interpreter->mainFunction = function;
 	}
 
-	Value functionValue = createFunction(function);
-	defineVariable(interpreter->environment, function->name, functionValue);
+	// 检查是否是静态函数
+	if (stmt->as.function.isStatic)
+    {
+        // 静态函数应该在全局环境中可见
+        Value functionValue;
+        functionValue.type = VAL_FUNCTION;
+        functionValue.as.function = function;
+        defineVariable(interpreter->globals, function->name, functionValue);
+    }
+    else
+    {
+        // 普通函数也在全局环境中定义
+        Value functionValue;
+        functionValue.type = VAL_FUNCTION;
+        functionValue.as.function = function;
+        defineVariable(interpreter->globals, function->name, functionValue);
+    }
 }
 
 // 执行返回语句
@@ -1919,6 +1988,13 @@ void freeInterpreter(Interpreter *interpreter)
 		freeEnvironment(interpreter->globals);
 		free(interpreter->globals);
 		interpreter->globals = NULL;
+	}
+
+	if (interpreter->staticStorage != NULL)
+	{
+		freeStaticStorage(interpreter->staticStorage);
+		free(interpreter->staticStorage);
+		interpreter->staticStorage = NULL;
 	}
 
 	// 重置当前环境指针（已被释放或指向其他环境）

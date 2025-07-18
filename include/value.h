@@ -6,7 +6,6 @@
 // #include "environment.h"
 
 typedef struct Environment Environment;
-
 // 前向声明
 typedef struct Value Value;
 typedef struct Array Array;
@@ -23,6 +22,7 @@ typedef enum
     VAL_ARRAY,
     VAL_ENUM_VALUE
 } ValueType;
+
 
 // 枚举值结构
 typedef struct

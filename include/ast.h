@@ -42,23 +42,23 @@ typedef enum
     STMT_RETURN,     // return语句
     STMT_SWITCH,     // switch语句
     STMT_BREAK,      // break语句
-    STMT_DO_WHILE,    // do-while循环
-    STMT_ENUM,      // 枚举声明
+    STMT_DO_WHILE,   // do-while循环
+    STMT_ENUM,       // 枚举声明
 } StmtType;
 
 // 枚举成员结构
 typedef struct
 {
-    Token name;        // 枚举成员名称
-    Expr *value;       // 枚举成员值（可选）
+    Token name;  // 枚举成员名称
+    Expr *value; // 枚举成员值（可选）
 } EnumMember;
 
 // 枚举声明语句结构
 typedef struct
 {
-    Token name;              // 枚举类型名称
-    EnumMember *members;     // 枚举成员数组
-    int memberCount;         // 成员数量
+    Token name;          // 枚举类型名称
+    EnumMember *members; // 枚举成员数组
+    int memberCount;     // 成员数量
 } EnumStmt;
 
 // 常量声明语句结构
@@ -67,6 +67,7 @@ typedef struct
     Token name;          // 常量名
     TypeAnnotation type; // 类型信息
     Expr *initializer;   // 常量必须有初始值
+    bool isStatic;       // 是否为静态常量
 } ConstStmt;
 
 // 多变量声明语句结构
@@ -204,6 +205,7 @@ typedef struct
     Token name;
     TypeAnnotation type; // 类型信息
     Expr *initializer;   // 初始值，可以为NULL
+    bool isStatic;       // 是否为静态变量
 } VarStmt;
 
 // 代码块
@@ -247,6 +249,7 @@ typedef struct
     TypeAnnotation returnType;  // 返回类型
     int paramCount;             // 参数数量
     struct Stmt *body;          // 函数体
+    bool isStatic;              // 是否为静态函数
 } FunctionStmt;
 
 // return语句
@@ -277,9 +280,10 @@ typedef struct
     Token keyword; // break 关键字
 } BreakStmt;
 
-typedef struct DoWhileStmt {
-    Stmt* body;      // 循环体
-    Expr* condition; // 循环条件
+typedef struct DoWhileStmt
+{
+    Stmt *body;      // 循环体
+    Expr *condition; // 循环条件
 } DoWhileStmt;
 
 // 语句结构
@@ -336,6 +340,8 @@ Stmt *createReturnStmt(Token keyword, Expr *value);
 Stmt *createSwitchStmt(Expr *discriminant, CaseStmt *cases, int caseCount);
 Stmt *createBreakStmt(Token keyword);
 Stmt *createEnumStmt(Token name, EnumMember *members, int memberCount);
+Stmt *createStaticVarStmt(Token name, TypeAnnotation type, Expr *initializer);
+Stmt *createStaticFunctionStmt(Token name, Token *params, bool *paramHasVar, TypeAnnotation *paramTypes, int paramCount, TypeAnnotation returnType, Stmt *body);
 
 
 // 释放AST节点内存

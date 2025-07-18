@@ -119,15 +119,18 @@ const char *getParseErrorMsg(Parser *parser)
  * 解析声明语句
  *
  * 该函数负责解析各种类型的声明语句，包括：
+ * - 静态声明 (static关键字)
  * - 函数声明 (function关键字)
  * - 变量声明 (var关键字)
  * - 常量声明 (const关键字)
+ * - 枚举声明 (enum关键字)
  *
  * 对于变量声明，支持以下特性：
  * - 多变量声明：var a, b, c;
  * - 类型注解：var a: int;
  * - 初始化表达式：var a = 10;
  * - 组合使用：var a, b: int = 5;
+ * - 静态声明：static var globalVar: int = 0;
  *
  * @param parser 解析器实例指针
  * @return 返回解析得到的声明语句指针，如果解析失败则返回NULL
@@ -137,13 +140,31 @@ const char *getParseErrorMsg(Parser *parser)
  */
 static Stmt *declaration(Parser *parser)
 {
+    bool isStatic = false;
+
+    // 检查是否有 static 关键字
+    if (match(parser, TOKEN_STATIC))
+    {
+        isStatic = true;
+    }
+
     if (match(parser, TOKEN_FUNCTION))
     {
-        return functionDeclaration(parser);
+        Stmt *funcStmt = functionDeclaration(parser);
+        if (funcStmt != NULL && isStatic)
+        {
+            funcStmt->as.function.isStatic = true;
+        }
+        return funcStmt;
     }
 
     if (match(parser, TOKEN_ENUM))
     {
+        if (isStatic)
+        {
+            error(parser, "Static enum declarations are not supported.");
+            return NULL;
+        }
         return enumDeclaration(parser);
     }
 
@@ -218,18 +239,41 @@ static Stmt *declaration(Parser *parser)
         {
             // 只有一个变量，直接创建并返回单个语句
             Stmt *stmt = createVarStmt(names[0], typeAnnotation, initializer);
+            if (stmt != NULL && isStatic)
+            {
+                stmt->as.var.isStatic = true;
+            }
             free(names);
             return stmt;
         }
         else
         {
+            if (isStatic)
+            {
+                error(parser, "Static multi-variable declarations are not currently supported.");
+                if (initializer)
+                    freeExpr(initializer);
+                free(names);
+                return NULL;
+            }
             return createMultiVarStmt(names, count, typeAnnotation, initializer);
         }
     }
 
     if (match(parser, TOKEN_CONST)) // 添加常量声明解析
     {
-        return constDeclaration(parser);
+        Stmt *constStmt = constDeclaration(parser);
+        if (constStmt != NULL && isStatic)
+        {
+            constStmt->as.constStmt.isStatic = true;
+        }
+        return constStmt;
+    }
+
+    if (isStatic)
+    {
+        error(parser, "Expected declaration after 'static'.");
+        return NULL;
     }
 
     return statement(parser);
@@ -1143,7 +1187,6 @@ static Stmt *enumDeclaration(Parser *parser)
                 return NULL;
             }
 
-
             Expr *value = NULL;
             if (match(parser, TOKEN_ASSIGN))
             {
@@ -1183,7 +1226,6 @@ static Stmt *enumDeclaration(Parser *parser)
         free(members);
         return NULL;
     }
-
 
     Stmt *stmt = createEnumStmt(name, members, memberCount);
 
@@ -1319,7 +1361,7 @@ static Expr *unary(Parser *parser)
             castType = TYPE_FLOAT;
             isCast = true;
         }
-         else if (check(parser, TOKEN_DOUBLE))
+        else if (check(parser, TOKEN_DOUBLE))
         {
             castType = TYPE_DOUBLE;
             isCast = true;
@@ -1751,10 +1793,7 @@ static TypeAnnotation parseTypeAnnotation(Parser *parser)
     {
         baseType = TYPE_FLOAT;
     }
-    else if (match(parser, TOKEN_DOUBLE))
-    {
-        baseType = TYPE_DOUBLE;
-    }
+
     else if (match(parser, TOKEN_STRING_TYPE))
     {
         baseType = TYPE_STRING;
