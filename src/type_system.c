@@ -4,18 +4,18 @@
 
 static const char *baseTypeToString(BaseType type);
 
-
 // 类型注解转字符串
 const char *annotationToString(TypeAnnotation type)
 {
-   static char buffer[64];
-    
-    if (type.kind == TYPE_ARRAY) {
-        snprintf(buffer, sizeof(buffer), "%s[]", 
-                baseTypeToString(type.as.array.elementType));
+    static char buffer[64];
+
+    if (type.kind == TYPE_ARRAY)
+    {
+        snprintf(buffer, sizeof(buffer), "%s[]",
+                 baseTypeToString(type.as.array.elementType));
         return buffer;
     }
-    
+
     // 简单类型
     return baseTypeToString(type.as.simple);
 }
@@ -32,6 +32,8 @@ static const char *baseTypeToString(BaseType type)
         return "int";
     case TYPE_FLOAT:
         return "float";
+    case TYPE_DOUBLE:
+        return "double";
     case TYPE_STRING:
         return "string";
     case TYPE_BOOL:
@@ -56,6 +58,9 @@ TypeAnnotation tokenToTypeAnnotation(int tokenType)
         break;
     case TOKEN_INT:
         annotation.as.simple = TYPE_INT;
+        break;
+    case TOKEN_DOUBLE:
+        annotation.as.simple = TYPE_DOUBLE;
         break;
     case TOKEN_FLOAT_TYPE:
         annotation.as.simple = TYPE_FLOAT;

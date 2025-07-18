@@ -57,6 +57,7 @@ typedef enum
 	TOKEN_VOID,		   // void
 	TOKEN_INT,		   // int
 	TOKEN_FLOAT_TYPE,  // float
+	TOKEN_DOUBLE,	   // double
 	TOKEN_STRING_TYPE, // string
 	TOKEN_BOOL,		   // bool
 	TOKEN_CONST,	   // const

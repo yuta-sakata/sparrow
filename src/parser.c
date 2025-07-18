@@ -1319,6 +1319,11 @@ static Expr *unary(Parser *parser)
             castType = TYPE_FLOAT;
             isCast = true;
         }
+         else if (check(parser, TOKEN_DOUBLE))
+        {
+            castType = TYPE_DOUBLE;
+            isCast = true;
+        }
         else if (check(parser, TOKEN_STRING_TYPE))
         {
             castType = TYPE_STRING;
@@ -1745,6 +1750,10 @@ static TypeAnnotation parseTypeAnnotation(Parser *parser)
     else if (match(parser, TOKEN_FLOAT_TYPE))
     {
         baseType = TYPE_FLOAT;
+    }
+    else if (match(parser, TOKEN_DOUBLE))
+    {
+        baseType = TYPE_DOUBLE;
     }
     else if (match(parser, TOKEN_STRING_TYPE))
     {

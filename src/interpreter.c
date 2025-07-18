@@ -83,19 +83,18 @@ void initInterpreter(Interpreter *interpreter)
 	registerAllNativeFunctions(interpreter);
 }
 
-
 /**
  * 解释器主执行函数，分阶段执行语句列表
- * 
+ *
  * 该函数采用两阶段执行策略：
  * 1. 第一阶段：优先执行函数定义和枚举声明，确保这些定义在其他代码执行前可用
  * 2. 第二阶段：执行剩余的语句（变量声明、表达式语句等）
  * 3. 执行完成后，如果存在main函数，则自动调用它
- * 
+ *
  * @param interpreter 解释器实例指针，包含执行环境和状态
  * @param statements 待执行的语句数组
  * @param count 语句数组的长度
- * 
+ *
  * @note 如果在任何阶段发生错误，函数会立即返回，不继续执行后续语句
  * @note main函数调用时不传递任何参数，返回值会被自动释放
  */
@@ -131,7 +130,7 @@ void interpret(Interpreter *interpreter, Stmt **statements, int count)
 				return;
 			}
 		}
-		}
+	}
 
 	// 如果找到了 main 函数，自动调用它
 	if (interpreter->hasMainFunction && interpreter->mainFunction != NULL)
@@ -1149,6 +1148,51 @@ static Value evaluateCast(Interpreter *interpreter, Expr *expr)
 		default:
 			freeValue(value);
 			runtimeError(interpreter, "Cannot convert to int");
+			return createNull();
+		}
+	}
+
+	case TYPE_DOUBLE:
+	{
+		switch (value.type)
+		{
+		case VAL_NUMBER:
+			// 已经是数字，直接返回
+			return value;
+		case VAL_STRING:
+			// 字符串转双精度浮点数
+			if (value.as.string != NULL)
+			{
+				char *endptr;
+				double doubleValue = strtod(value.as.string, &endptr);
+
+				// 检查转换是否成功
+				if (endptr == value.as.string || *endptr != '\0')
+				{
+					freeValue(value);
+					runtimeError(interpreter, "Cannot convert string '%s' to double", value.as.string);
+					return createNull();
+				}
+
+				freeValue(value);
+				return createNumber(doubleValue);
+			}
+			else
+			{
+				freeValue(value);
+				runtimeError(interpreter, "Cannot convert null string to double");
+				return createNull();
+			}
+		case VAL_BOOL:
+			// 布尔转双精度浮点数：true -> 1.0, false -> 0.0
+			{
+				double doubleValue = value.as.boolean ? 1.0 : 0.0;
+				freeValue(value);
+				return createNumber(doubleValue);
+			}
+		default:
+			freeValue(value);
+			runtimeError(interpreter, "Cannot convert to double");
 			return createNull();
 		}
 	}

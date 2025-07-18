@@ -11,6 +11,7 @@ typedef enum
     TYPE_VOID,    // void类型
     TYPE_INT,     // 整数类型
     TYPE_FLOAT,   // 浮点数类型
+    TYPE_DOUBLE,  // 双精度浮点数类型
     TYPE_STRING,  // 字符串类型
     TYPE_BOOL,    // 布尔类型
     TYPE_FUNCTION, // 函数类型

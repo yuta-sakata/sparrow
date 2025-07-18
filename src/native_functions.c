@@ -71,6 +71,7 @@ void registerAllNativeFunctions(Interpreter *interpreter)
 
     // 基础函数
     registerNativeFunction(interpreter, "print", -1, printNative);
+    registerNativeFunction(interpreter, "println", -1, printlnNative);
     registerNativeFunction(interpreter, "clock", 0, clockNative);
     registerNativeFunction(interpreter, "type", 1, typeNative);
     registerNativeFunction(interpreter, "input", -1, inputNative);
@@ -102,10 +103,27 @@ Value printNative(int argCount, Value *args)
         if (i < argCount - 1)
             printf(" ");
     }
-    printf("\n");
     return createNull();
 }
 
+Value printlnNative(int argCount, Value *args)
+{
+    // 添加安全检查
+    if (args == NULL && argCount > 0)
+    {
+        printf("ERROR: NULL args pointer passed to printlnNative\n");
+        return createNull();
+    }
+
+    for (int i = 0; i < argCount; i++)
+    {
+        printValue(args[i]);
+        if (i < argCount - 1)
+            printf(" ");
+    }
+    printf("\n");
+    return createNull();
+}
 
 //input 原生函数
 Value inputNative(int argCount, Value *args)
