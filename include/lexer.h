@@ -69,6 +69,7 @@ typedef enum
 	TOKEN_NULL,		   // null
 	TOKEN_TRUE,		   // true
 	TOKEN_FALSE,	   // false
+	TOKEN_ENUM,		   // enum
 	// 错误标记
 	TOKEN_ERROR
 } TokenType;

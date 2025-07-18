@@ -35,6 +35,7 @@ static void executeFunction(Interpreter *interpreter, Stmt *stmt);											// 
 static void executeReturn(Interpreter *interpreter, Stmt *stmt);											// 处理 return 语句
 static void executeSwitch(Interpreter *interpreter, Stmt *stmt);											// 处理 switch 语句
 static void executeBreak(Interpreter *interpreter, Stmt *stmt);												// 处理 break 语句
+static void executeEnum(Interpreter *interpreter, Stmt *stmt);												// 处理枚举声明
 
 static Value callFunction(Interpreter *interpreter, Function *function, Value *arguments, int argCount); // 调用函数
 static void runtimeError(Interpreter *interpreter, const char *format, ...);							 // 处理运行时错误
@@ -82,28 +83,30 @@ void initInterpreter(Interpreter *interpreter)
 	registerAllNativeFunctions(interpreter);
 }
 
+
 /**
- * 解释执行语句序列
- *
+ * 解释器主执行函数，分阶段执行语句列表
+ * 
  * 该函数采用两阶段执行策略：
- * 第一阶段：优先执行所有函数定义语句，确保函数在调用前已被定义
- * 第二阶段：执行其他类型的语句（变量声明、表达式等）
- * 执行完成后，如果存在main函数，会自动调用它
- *
- * @param interpreter 解释器实例，包含执行环境和状态信息
+ * 1. 第一阶段：优先执行函数定义和枚举声明，确保这些定义在其他代码执行前可用
+ * 2. 第二阶段：执行剩余的语句（变量声明、表达式语句等）
+ * 3. 执行完成后，如果存在main函数，则自动调用它
+ * 
+ * @param interpreter 解释器实例指针，包含执行环境和状态
  * @param statements 待执行的语句数组
  * @param count 语句数组的长度
- *
- * @note 如果在执行过程中发生错误，函数会立即返回，不继续执行后续语句
- * @note main函数如果存在会在所有语句执行完毕后自动调用，无需手动调用
+ * 
+ * @note 如果在任何阶段发生错误，函数会立即返回，不继续执行后续语句
+ * @note main函数调用时不传递任何参数，返回值会被自动释放
  */
 void interpret(Interpreter *interpreter, Stmt **statements, int count)
 {
-
-	// 第一阶段：只执行函数定义
+	// 第一阶段：执行函数定义和枚举声明
 	for (int i = 0; i < count; i++)
 	{
-		if (statements[i]->type == STMT_FUNCTION)
+		bool isEnum = (statements[i]->type == STMT_ENUM);
+		bool isFunction = (statements[i]->type == STMT_FUNCTION);
+		if (isEnum || isFunction)
 		{
 			execute(interpreter, statements[i]);
 			if (interpreter->hadError)
@@ -116,13 +119,19 @@ void interpret(Interpreter *interpreter, Stmt **statements, int count)
 	// 第二阶段：执行其他语句
 	for (int i = 0; i < count; i++)
 	{
-		if (statements[i]->type != STMT_FUNCTION)
+
+		bool isEnum = (statements[i]->type == STMT_ENUM);
+		bool isFunction = (statements[i]->type == STMT_FUNCTION);
+
+		if (!isEnum && !isFunction)
 		{
 			execute(interpreter, statements[i]);
 			if (interpreter->hadError)
+			{
 				return;
+			}
 		}
-	}
+		}
 
 	// 如果找到了 main 函数，自动调用它
 	if (interpreter->hasMainFunction && interpreter->mainFunction != NULL)
@@ -181,6 +190,11 @@ void execute(Interpreter *interpreter, Stmt *stmt)
 		break;
 	case STMT_BREAK:
 		executeBreak(interpreter, stmt);
+		break;
+	case STMT_ENUM:
+		executeEnum(interpreter, stmt);
+		break;
+	default:
 		break;
 	}
 }
@@ -1681,6 +1695,78 @@ static void executeBreak(Interpreter *interpreter, Stmt *stmt)
 {
 	breakStatus.hasBreak = true;
 }
+
+static void executeEnum(Interpreter *interpreter, Stmt *stmt)
+{
+	const char *enumName = stmt->as.enumStmt.name.lexeme;
+	int currentValue = 0; // 跟踪当前枚举值
+
+	// 为每个枚举成员创建变量
+	for (int i = 0; i < stmt->as.enumStmt.memberCount; i++)
+	{
+		EnumMember *member = &stmt->as.enumStmt.members[i];
+
+		// 计算枚举值
+		int enumValue = 0;
+		if (member->value != NULL)
+		{
+			Value val = evaluate(interpreter, member->value);
+			if (interpreter->hadError)
+				return;
+
+			if (val.type == VAL_NUMBER)
+			{
+				enumValue = (int)val.as.number;
+				currentValue = enumValue; // 更新当前值
+			}
+			else
+			{
+				runtimeError(interpreter, "Enum value must be a number");
+				freeValue(val);
+				return;
+			}
+			freeValue(val);
+		}
+		else
+		{
+			enumValue = currentValue; // 使用当前值
+		}
+
+		// 创建简单的数字值而不是枚举值类型
+		Value enumVal = createNumber((double)enumValue);
+
+		// 将枚举成员定义为全局变量，格式为 EnumName_MemberName
+		char *fullName = malloc(strlen(enumName) + strlen(member->name.lexeme) + 2);
+		if (fullName == NULL)
+		{
+			runtimeError(interpreter, "Memory allocation failed");
+			freeValue(enumVal);
+			return;
+		}
+
+		sprintf(fullName, "%s_%s", enumName, member->name.lexeme);
+
+		// 确保在全局环境中定义枚举常量
+		defineConstant(interpreter->globals, fullName, enumVal);
+
+		// 验证是否成功定义
+		Value testValue = getVariable(interpreter->globals, (Token){.lexeme = fullName});
+		if (testValue.type == VAL_NULL && interpreter->hadError)
+		{
+			interpreter->hadError = false; // 重置错误状态用于调试
+		}
+		else
+		{
+			freeValue(testValue);
+		}
+
+		free(fullName);
+		freeValue(enumVal);
+
+		currentValue++; // 为下一个成员递增值
+	}
+}
+
 /**
  * 调用函数并执行函数体
  *

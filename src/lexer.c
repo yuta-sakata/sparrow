@@ -33,6 +33,7 @@ static Keyword keywords[] = {
     {"null", 4, TOKEN_NULL},
     {"true", 4, TOKEN_TRUE},
     {"false", 5, TOKEN_FALSE},
+    {"enum", 4, TOKEN_ENUM},
     {NULL, 0, TOKEN_ERROR} // 表结束标记
 };
 

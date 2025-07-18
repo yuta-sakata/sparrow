@@ -269,6 +269,22 @@ Stmt *createBreakStmt(Token keyword)
     return stmt;
 }
 
+Stmt *createEnumStmt(Token name, EnumMember *members, int memberCount)
+{    
+    Stmt *stmt = (Stmt *)malloc(sizeof(Stmt));
+    if (stmt == NULL)
+    {
+        return NULL;
+    }
+    stmt->type = STMT_ENUM;
+    stmt->as.enumStmt.name = name;
+    stmt->as.enumStmt.members = members;
+    stmt->as.enumStmt.memberCount = memberCount;
+    
+    
+    return stmt;
+}
+
 /**
  * 深度复制表达式节点
  *
@@ -810,7 +826,7 @@ void freeStmt(Stmt *stmt)
         freeStmt(stmt->as.whileLoop.body);
         break;
 
-     case STMT_DO_WHILE:
+    case STMT_DO_WHILE:
         if (stmt->as.doWhile.body != NULL)
         {
             freeStmt(stmt->as.doWhile.body);
@@ -820,7 +836,7 @@ void freeStmt(Stmt *stmt)
             freeExpr(stmt->as.doWhile.condition);
         }
         break;
-        
+
     case STMT_FOR:
         if (stmt->as.forLoop.initializer)
         {
@@ -879,6 +895,19 @@ void freeStmt(Stmt *stmt)
                 }
             }
             free(stmt->as.switchStmt.cases);
+        }
+        break;
+    case STMT_ENUM:
+        if (stmt->as.enumStmt.members != NULL)
+        {
+            for (int i = 0; i < stmt->as.enumStmt.memberCount; i++)
+            {
+                if (stmt->as.enumStmt.members[i].value != NULL)
+                {
+                    freeExpr(stmt->as.enumStmt.members[i].value);
+                }
+            }
+            free(stmt->as.enumStmt.members);
         }
         break;
     case STMT_BREAK:

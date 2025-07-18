@@ -13,7 +13,8 @@ typedef enum
     TYPE_FLOAT,   // 浮点数类型
     TYPE_STRING,  // 字符串类型
     TYPE_BOOL,    // 布尔类型
-    TYPE_FUNCTION // 函数类型
+    TYPE_FUNCTION, // 函数类型
+    TYPE_ENUM
 } BaseType;
 
 // 类型注解结构

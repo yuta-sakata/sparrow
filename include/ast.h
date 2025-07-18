@@ -42,8 +42,24 @@ typedef enum
     STMT_RETURN,     // return语句
     STMT_SWITCH,     // switch语句
     STMT_BREAK,      // break语句
-    STMT_DO_WHILE    // do-while循环
+    STMT_DO_WHILE,    // do-while循环
+    STMT_ENUM,      // 枚举声明
 } StmtType;
+
+// 枚举成员结构
+typedef struct
+{
+    Token name;        // 枚举成员名称
+    Expr *value;       // 枚举成员值（可选）
+} EnumMember;
+
+// 枚举声明语句结构
+typedef struct
+{
+    Token name;              // 枚举类型名称
+    EnumMember *members;     // 枚举成员数组
+    int memberCount;         // 成员数量
+} EnumStmt;
 
 // 常量声明语句结构
 typedef struct
@@ -285,6 +301,7 @@ struct Stmt
         SwitchStmt switchStmt;     // switch语句
         BreakStmt breakStmt;       // break语句
         DoWhileStmt doWhile;       // do-while循环
+        EnumStmt enumStmt;         // 枚举声明
     } as;
 };
 
@@ -318,6 +335,8 @@ Stmt *createFunctionStmt(Token name, Token *params, bool *paramHasVar, TypeAnnot
 Stmt *createReturnStmt(Token keyword, Expr *value);
 Stmt *createSwitchStmt(Expr *discriminant, CaseStmt *cases, int caseCount);
 Stmt *createBreakStmt(Token keyword);
+Stmt *createEnumStmt(Token name, EnumMember *members, int memberCount);
+
 
 // 释放AST节点内存
 void freeExpr(Expr *expr);

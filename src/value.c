@@ -30,7 +30,19 @@ Value createNumber(double value)
     return val;
 }
 
-// 创建字符串
+/**
+ * 创建字符串类型的Value对象
+ *
+ * 该函数分配内存并复制输入的字符串，创建一个新的字符串类型Value。
+ * 如果输入为NULL，则创建一个空字符串。如果内存分配失败，则返回NULL类型的Value。
+ *
+ * @param value 要复制的C字符串，可以为NULL
+ * @return Value 包含复制字符串的Value对象，类型为VAL_STRING；
+ *               如果内存分配失败则返回VAL_NULL类型的Value
+ *
+ * @note 调用者有责任通过适当的清理函数释放返回Value中分配的内存
+ * @warning 如果内存分配失败，返回的Value类型将被设置为VAL_NULL
+ */
 Value createString(const char *value)
 {
     Value val;
@@ -59,14 +71,22 @@ Value createString(const char *value)
         return val;
     }
 
-    // 修复：使用安全的字符串复制
+    // 复制字符串内容
     strncpy(val.as.string, value, len);
     val.as.string[len] = '\0';
 
     return val;
 }
 
-// 创建函数值
+/**
+ * 创建一个函数类型的值对象
+ *
+ * 此函数用于将一个Function指针包装成Value结构体，设置其类型为VAL_FUNCTION
+ * 并将函数指针存储在联合体的function字段中。
+ *
+ * @param function 指向要包装的Function结构体的指针
+ * @return 返回一个类型为VAL_FUNCTION的Value结构体，其中包含传入的函数指针
+ */
 Value createFunction(Function *function)
 {
     Value val;
@@ -104,12 +124,37 @@ bool valuesEqual(Value a, Value b)
         return a.as.function == b.as.function;
     case VAL_NATIVE_FUNCTION:
         return a.as.nativeFunction == b.as.nativeFunction;
+    case VAL_ENUM_VALUE:
+        if (a.as.enumValue == NULL || b.as.enumValue == NULL)
+        {
+            return a.as.enumValue == b.as.enumValue;
+        }
+        return a.as.enumValue->value == b.as.enumValue->value &&
+               strcmp(a.as.enumValue->enumName, b.as.enumValue->enumName) == 0;
     }
 
     return false;
 }
 
-// 打印值
+/**
+ * 打印值的内容到标准输出
+ *
+ * 根据值的类型格式化并打印相应的内容：
+ * - VAL_NULL: 打印 "null"
+ * - VAL_BOOL: 打印 "true" 或 "false"
+ * - VAL_NUMBER: 如果是整数则打印整数格式，否则打印浮点数格式
+ * - VAL_STRING: 打印字符串内容，如果为空则打印 "(null string)"
+ * - VAL_FUNCTION: 打印函数信息，格式为 "[Function: 函数名]" 或 "[Function: anonymous]"
+ * - VAL_NATIVE_FUNCTION: 打印原生函数信息，格式为 "[Native Function: 函数名]" 或 "[Native Function: anonymous]"
+ * - VAL_ARRAY: 打印数组内容，格式为 "[元素1, 元素2, ...]"，递归打印每个元素
+ * - 其他类型: 打印 "(unknown value type)"
+ *
+ * @param value 要打印的值对象
+ *
+ * @note 对于数组类型，函数会递归调用自身来打印每个元素
+ * @note 包含空指针检查以防止访问无效内存
+ * @note 对于数值类型，会自动判断是否为整数并选择合适的打印格式
+ */
 void printValue(Value value)
 {
     switch (value.type)
@@ -188,17 +233,123 @@ void printValue(Value value)
         }
         printf("]");
         break;
+    case VAL_ENUM_VALUE:
+        if (value.as.enumValue != NULL)
+        {
+            if (value.as.enumValue->enumName != NULL && value.as.enumValue->memberName != NULL)
+            {
+                printf("%s::%s", value.as.enumValue->enumName, value.as.enumValue->memberName);
+            }
+            else
+            {
+                printf("(invalid enum value)");
+            }
+        }
+        else
+        {
+            printf("(null enum value)");
+        }
+        break;
     default:
         printf("(unknown value type)");
         break;
     }
 }
 
-// 复制值
+Value createEnumValue(const char *enumName, const char *memberName, int value)
+{
+    Value val;
+    val.type = VAL_ENUM_VALUE;
+
+    EnumValue *enumValue = (EnumValue *)malloc(sizeof(EnumValue));
+    if (enumValue == NULL)
+    {
+        return createNull();
+    }
+
+    // 复制枚举类型名称
+    if (enumName != NULL)
+    {
+        size_t enumNameLen = strlen(enumName);
+        enumValue->enumName = (char *)malloc(enumNameLen + 1);
+        if (enumValue->enumName == NULL)
+        {
+            free(enumValue);
+            return createNull();
+        }
+        strcpy(enumValue->enumName, enumName);
+    }
+    else
+    {
+        enumValue->enumName = NULL;
+    }
+
+    // 复制枚举成员名称
+    if (memberName != NULL)
+    {
+        size_t memberNameLen = strlen(memberName);
+        enumValue->memberName = (char *)malloc(memberNameLen + 1);
+        if (enumValue->memberName == NULL)
+        {
+            free(enumValue->enumName);
+            free(enumValue);
+            return createNull();
+        }
+        strcpy(enumValue->memberName, memberName);
+    }
+    else
+    {
+        enumValue->memberName = NULL;
+    }
+
+    enumValue->value = value;
+    val.as.enumValue = enumValue;
+
+    return val;
+}
+
+void freeEnumValue(EnumValue *enumValue)
+{
+    if (enumValue == NULL)
+        return;
+
+    if (enumValue->enumName != NULL)
+    {
+        free(enumValue->enumName);
+    }
+
+    if (enumValue->memberName != NULL)
+    {
+        free(enumValue->memberName);
+    }
+
+    free(enumValue);
+}
+
+/**
+ * 深度复制一个Value值
+ *
+ * 该函数根据Value的类型执行相应的复制操作：
+ * - VAL_STRING: 创建新的字符串副本，处理NULL指针情况
+ * - VAL_FUNCTION: 深度复制函数对象，包括函数名、参数名、参数类型等，
+ *   但body和closure保持引用（浅拷贝）
+ * - VAL_NATIVE_FUNCTION: 深度复制原生函数对象，包括函数指针、参数数量和函数名
+ * - VAL_ARRAY: 递归深度复制数组及其所有元素
+ * - 其他类型: 直接返回原值（简单值类型）
+ *
+ * @param value 要复制的Value值
+ * @return Value 复制后的新Value值，如果复制失败则返回NULL值
+ *
+ * @note 函数会处理内存分配失败的情况，并在失败时清理已分配的资源
+ * @note 对于函数类型，body和closure字段不进行深度复制以避免循环引用
+ * @warning 调用者负责释放返回值占用的内存
+ */
 Value copyValue(Value value)
 {
     switch (value.type)
     {
+
+    // 处理字符串类型
     case VAL_STRING:
         if (value.as.string != NULL)
         {
@@ -208,6 +359,8 @@ Value copyValue(Value value)
         {
             return createString(""); // 防止NULL指针
         }
+
+    // 处理函数类型
     case VAL_FUNCTION:
     {
         // 深度复制函数对象
@@ -327,6 +480,8 @@ Value copyValue(Value value)
         newValue.as.function = newFunction;
         return newValue;
     }
+
+    // 处理原生函数类型
     case VAL_NATIVE_FUNCTION:
     {
         // 深度复制原生函数对象
@@ -369,6 +524,8 @@ Value copyValue(Value value)
         newValue.as.nativeFunction = newNativeFunction;
         return newValue;
     }
+
+    // 处理数组类型
     case VAL_ARRAY:
         if (value.as.array == NULL)
         {
@@ -393,6 +550,18 @@ Value copyValue(Value value)
         }
 
         return newArrayValue;
+    case VAL_ENUM_VALUE:
+        if (value.as.enumValue != NULL)
+        {
+            return createEnumValue(
+                value.as.enumValue->enumName,
+                value.as.enumValue->memberName,
+                value.as.enumValue->value);
+        }
+        else
+        {
+            return createNull();
+        }
     default:
         // 对于简单值类型，直接复制
         return value;
@@ -438,6 +607,7 @@ void freeValue(Value value)
         }
         break;
 
+    // 释放原生函数资源
     case VAL_NATIVE_FUNCTION:
         // 原生函数需要释放结构体，但不释放函数指针
         if (value.as.nativeFunction != NULL)
@@ -454,6 +624,8 @@ void freeValue(Value value)
             free(value.as.nativeFunction);
         }
         break;
+
+    // 释放数组资源
     case VAL_ARRAY:
         if (value.as.array != NULL)
         {
@@ -465,13 +637,31 @@ void freeValue(Value value)
             free(value.as.array);
         }
         break;
+    case VAL_ENUM_VALUE:
+        if (value.as.enumValue != NULL)
+        {
+            freeEnumValue(value.as.enumValue);
+        }
+        break;
     default:
         // 其他类型不需要释放
         break;
     }
 }
 
-// 创建数组值
+/**
+ * 创建一个新的数组值
+ *
+ * 此函数分配并初始化一个新的数组结构，设置指定的元素类型和初始容量。
+ * 如果内存分配失败，函数将返回一个类型为 VAL_NULL 的值。
+ *
+ * @param elementType 数组中元素的基础类型
+ * @param initialCapacity 数组的初始容量。如果小于等于0，则默认使用8作为初始容量
+ * @return Value 包含新创建数组的值结构体，如果内存分配失败则返回 VAL_NULL 类型的值
+ *
+ * @note 调用者负责在不再需要时释放返回的数组内存
+ * @note 如果 initialCapacity <= 0，函数会自动设置容量为8
+ */
 Value createArray(BaseType elementType, int initialCapacity)
 {
     Value val;
@@ -500,7 +690,19 @@ Value createArray(BaseType elementType, int initialCapacity)
     return val;
 }
 
-// 数组操作函数
+/**
+ * 向动态数组末尾添加一个元素
+ *
+ * 该函数将指定的值添加到数组的末尾。如果数组容量不足，会自动扩容。
+ * 初始容量为8，之后每次扩容为当前容量的2倍。
+ *
+ * @param array 指向要操作的数组结构的指针，不能为NULL
+ * @param value 要添加到数组中的值
+ *
+ * @note 如果传入NULL数组指针，函数会打印错误信息并返回
+ * @note 如果内存重新分配失败，函数会打印错误信息并返回，原数组保持不变
+ * @note 成功添加元素后，数组的count会自动增加1
+ */
 void arrayPush(Array *array, Value value)
 {
     if (array == NULL)

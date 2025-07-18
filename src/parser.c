@@ -32,6 +32,7 @@ static Stmt *returnStatement(Parser *parser);
 static Stmt *switchStatement(Parser *parser);
 static Stmt *breakStatement(Parser *parser);
 static Stmt *doWhileStatement(Parser *parser);
+static Stmt *enumDeclaration(Parser *parser);
 
 // 辅助函数声明
 static int match(Parser *parser, TokenType type);
@@ -139,6 +140,11 @@ static Stmt *declaration(Parser *parser)
     if (match(parser, TOKEN_FUNCTION))
     {
         return functionDeclaration(parser);
+    }
+
+    if (match(parser, TOKEN_ENUM))
+    {
+        return enumDeclaration(parser);
     }
 
     if (match(parser, TOKEN_VAR))
@@ -603,7 +609,7 @@ static Stmt *statement(Parser *parser)
         return forStatement(parser);
     }
 
-    if (match(parser, TOKEN_DO)) 
+    if (match(parser, TOKEN_DO))
         return doWhileStatement(parser);
 
     if (match(parser, TOKEN_RETURN))
@@ -1101,6 +1107,87 @@ static Stmt *doWhileStatement(Parser *parser)
     }
 
     return createDoWhileStmt(body, condition);
+}
+
+static Stmt *enumDeclaration(Parser *parser)
+{
+
+    Token name = consume(parser, TOKEN_IDENTIFIER, "Expect enum name.");
+    if (parser->hadError)
+        return NULL;
+
+    consume(parser, TOKEN_LBRACE, "Expect '{' before enum body.");
+    if (parser->hadError)
+        return NULL;
+
+    // 解析枚举成员
+    int capacity = 8;
+    EnumMember *members = (EnumMember *)malloc(capacity * sizeof(EnumMember));
+    int memberCount = 0;
+    int currentValue = 0;
+
+    if (!check(parser, TOKEN_RBRACE))
+    {
+        do
+        {
+            if (memberCount >= capacity)
+            {
+                capacity *= 2;
+                members = (EnumMember *)realloc(members, capacity * sizeof(EnumMember));
+            }
+
+            Token memberName = consume(parser, TOKEN_IDENTIFIER, "Expect enum member name.");
+            if (parser->hadError)
+            {
+                free(members);
+                return NULL;
+            }
+
+
+            Expr *value = NULL;
+            if (match(parser, TOKEN_ASSIGN))
+            {
+                value = expression(parser);
+                if (parser->hadError)
+                {
+                    free(members);
+                    return NULL;
+                }
+
+                // 如果是数字字面量，更新当前值
+                if (value->type == EXPR_LITERAL && value->as.literal.value.type == TOKEN_INTEGER)
+                {
+                    currentValue = value->as.literal.value.value.intValue;
+                }
+            }
+
+            members[memberCount].name = memberName;
+            members[memberCount].value = value;
+            memberCount++;
+
+            if (value == NULL)
+            {
+                currentValue++; // 如果没有显式值，自动递增
+            }
+            else
+            {
+                currentValue++; // 为下一个成员准备
+            }
+
+        } while (match(parser, TOKEN_COMMA));
+    }
+
+    consume(parser, TOKEN_RBRACE, "Expect '}' after enum body.");
+    if (parser->hadError)
+    {
+        free(members);
+        return NULL;
+    }
+
+
+    Stmt *stmt = createEnumStmt(name, members, memberCount);
+
+    return stmt;
 }
 
 // 解析表达式

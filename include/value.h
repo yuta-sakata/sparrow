@@ -20,8 +20,17 @@ typedef enum
     VAL_STRING,
     VAL_FUNCTION,
     VAL_NATIVE_FUNCTION,
-    VAL_ARRAY
+    VAL_ARRAY,
+    VAL_ENUM_VALUE
 } ValueType;
+
+// 枚举值结构
+typedef struct
+{
+    char *enumName;    // 枚举类型名称
+    char *memberName;  // 枚举成员名称
+    int value;         // 枚举值
+} EnumValue;
 
 // 函数类型前向声明
 typedef struct Function Function;
@@ -47,6 +56,7 @@ struct Value
         Function *function;
         NativeFunction *nativeFunction;
         Array *array;
+        EnumValue *enumValue;
     } as;
 };
 
@@ -77,6 +87,8 @@ Value createNumber(double value);
 Value createString(const char *value);
 Value createFunction(Function *function);
 Value createNativeFunction(NativeFunction *function);
+Value createEnumValue(const char *enumName, const char *memberName, int value);
+void freeEnumValue(EnumValue *enumValue);
 
 // 数组操作函数
 Value createArray(BaseType elementType, int initialCapacity);
