@@ -15,6 +15,7 @@ static Keyword keywords[] = {
     {"in", 2, TOKEN_IN},
     {"while", 5, TOKEN_WHILE},
     {"for", 3, TOKEN_FOR},
+    {"do", 2, TOKEN_DO},
     {"return", 6, TOKEN_RETURN},
     {"function", 8, TOKEN_FUNCTION},
     {"var", 3, TOKEN_VAR},

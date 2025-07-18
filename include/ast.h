@@ -42,6 +42,7 @@ typedef enum
     STMT_RETURN,     // return语句
     STMT_SWITCH,     // switch语句
     STMT_BREAK,      // break语句
+    STMT_DO_WHILE    // do-while循环
 } StmtType;
 
 // 常量声明语句结构
@@ -260,6 +261,11 @@ typedef struct
     Token keyword; // break 关键字
 } BreakStmt;
 
+typedef struct DoWhileStmt {
+    Stmt* body;      // 循环体
+    Expr* condition; // 循环条件
+} DoWhileStmt;
+
 // 语句结构
 struct Stmt
 {
@@ -278,6 +284,7 @@ struct Stmt
         ReturnStmt returnStmt;     // return语句
         SwitchStmt switchStmt;     // switch语句
         BreakStmt breakStmt;       // break语句
+        DoWhileStmt doWhile;       // do-while循环
     } as;
 };
 
@@ -305,6 +312,7 @@ Stmt *createMultiVarStmt(Token *names, int count, TypeAnnotation type, Expr *ini
 Stmt *createBlockStmt(Stmt **statements, int count);
 Stmt *createIfStmt(Expr *condition, Stmt *thenBranch, Stmt *elseBranch);
 Stmt *createWhileStmt(Expr *condition, Stmt *body);
+Stmt *createDoWhileStmt(Stmt *body, Expr *condition);
 Stmt *createForStmt(Stmt *initializer, Expr *condition, Expr *increment, Stmt *body);
 Stmt *createFunctionStmt(Token name, Token *params, bool *paramHasVar, TypeAnnotation *paramTypes, int paramCount, TypeAnnotation returnTypeToken, Stmt *body);
 Stmt *createReturnStmt(Token keyword, Expr *value);

@@ -29,6 +29,7 @@ static void executeMultiVar(Interpreter *interpreter, Stmt *stmt);											// 
 static void executeBlock(Interpreter *interpreter, Stmt **statements, int count, Environment *environment); // 处理代码块
 static void executeIf(Interpreter *interpreter, Stmt *stmt);												// 处理 if 语句
 static void executeWhile(Interpreter *interpreter, Stmt *stmt);												// 处理 while 循环
+static void executeDoWhile(Interpreter *interpreter, Stmt *stmt);											// 处理 do-while 循环
 static void executeFor(Interpreter *interpreter, Stmt *stmt);												// 处理 for 循环
 static void executeFunction(Interpreter *interpreter, Stmt *stmt);											// 处理函数定义
 static void executeReturn(Interpreter *interpreter, Stmt *stmt);											// 处理 return 语句
@@ -83,21 +84,22 @@ void initInterpreter(Interpreter *interpreter)
 
 /**
  * 解释执行语句序列
- * 
+ *
  * 该函数采用两阶段执行策略：
  * 第一阶段：优先执行所有函数定义语句，确保函数在调用前已被定义
  * 第二阶段：执行其他类型的语句（变量声明、表达式等）
  * 执行完成后，如果存在main函数，会自动调用它
- * 
+ *
  * @param interpreter 解释器实例，包含执行环境和状态信息
  * @param statements 待执行的语句数组
  * @param count 语句数组的长度
- * 
+ *
  * @note 如果在执行过程中发生错误，函数会立即返回，不继续执行后续语句
  * @note main函数如果存在会在所有语句执行完毕后自动调用，无需手动调用
  */
 void interpret(Interpreter *interpreter, Stmt **statements, int count)
 {
+
 	// 第一阶段：只执行函数定义
 	for (int i = 0; i < count; i++)
 	{
@@ -161,6 +163,9 @@ void execute(Interpreter *interpreter, Stmt *stmt)
 		break;
 	case STMT_WHILE:
 		executeWhile(interpreter, stmt);
+		break;
+	case STMT_DO_WHILE:
+		executeDoWhile(interpreter, stmt);
 		break;
 	case STMT_FOR:
 		executeFor(interpreter, stmt);
@@ -310,7 +315,9 @@ static void executeBlock(Interpreter *interpreter, Stmt **statements, int count,
 
 	// 创建一个新的环境用于代码块
 	Environment blockEnv;
-	initEnvironment(&blockEnv, environment);
+
+	// 确保使用当前环境作为父环境，而不是传入的 environment 参数
+	initEnvironment(&blockEnv, interpreter->environment);
 
 	interpreter->environment = &blockEnv;
 
@@ -318,6 +325,14 @@ static void executeBlock(Interpreter *interpreter, Stmt **statements, int count,
 	{
 		execute(interpreter, statements[i]);
 		if (interpreter->hadError)
+			break;
+
+		// 检查是否有 break 语句（在循环中）
+		if (breakStatus.hasBreak)
+			break;
+
+		// 检查是否有 return 语句
+		if (returnStatus.hasReturn)
 			break;
 	}
 
@@ -636,6 +651,65 @@ static Value evaluateBinary(Interpreter *interpreter, Expr *expr)
 		freeValue(right);
 		return createBool(result);
 	}
+	case TOKEN_IN: // in 操作符
+	{
+		// 检查右操作数类型
+		if (right.type == VAL_ARRAY)
+		{
+			if (right.as.array == NULL)
+			{
+				freeValue(left);
+				freeValue(right);
+				return createBool(false);
+			}
+
+			// 在数组中查找元素
+			Array *array = right.as.array;
+			for (int i = 0; i < array->count; i++)
+			{
+				if (valuesEqual(left, array->elements[i]))
+				{
+					freeValue(left);
+					freeValue(right);
+					return createBool(true);
+				}
+			}
+
+			freeValue(left);
+			freeValue(right);
+			return createBool(false);
+		}
+		else if (right.type == VAL_STRING)
+		{
+			// 在字符串中查找子字符串
+			if (left.type != VAL_STRING)
+			{
+				freeValue(left);
+				freeValue(right);
+				runtimeError(interpreter, "当右操作数是字符串时，左操作数也必须是字符串");
+				return createNull();
+			}
+
+			if (left.as.string == NULL || right.as.string == NULL)
+			{
+				freeValue(left);
+				freeValue(right);
+				return createBool(false);
+			}
+
+			bool found = strstr(right.as.string, left.as.string) != NULL;
+			freeValue(left);
+			freeValue(right);
+			return createBool(found);
+		}
+		else
+		{
+			freeValue(left);
+			freeValue(right);
+			runtimeError(interpreter, "in 操作符的右操作数必须是数组或字符串");
+			return createNull();
+		}
+	}
 	}
 
 	freeValue(left);
@@ -718,6 +792,14 @@ static Value evaluateVariable(Interpreter *interpreter, Expr *expr)
 	{
 		printf("ERROR: NULL variable name in evaluateVariable\n");
 		return createNull();
+	}
+
+	Environment *env = interpreter->environment;
+	int level = 0;
+	while (env != NULL)
+	{
+		env = env->enclosing;
+		level++;
 	}
 
 	Value result = getVariable(interpreter->environment, expr->as.variable.name);
@@ -1229,6 +1311,46 @@ static void executeWhile(Interpreter *interpreter, Stmt *stmt)
 	}
 }
 
+static void executeDoWhile(Interpreter *interpreter, Stmt *stmt)
+{
+	do
+	{
+		// 执行循环体
+		execute(interpreter, stmt->as.doWhile.body);
+
+		// 如果执行过程中出现错误，退出循环
+		if (interpreter->hadError)
+			break;
+
+		// 检查是否有break语句
+		if (breakStatus.hasBreak)
+		{
+			breakStatus.hasBreak = false; // 重置break状态
+			break;
+		}
+
+		// 检查是否有return语句
+		if (returnStatus.hasReturn)
+		{
+			break;
+		}
+
+		// 计算条件表达式
+		Value condition = evaluate(interpreter, stmt->as.doWhile.condition);
+
+		// 检查条件是否为真
+		bool isTruthy = condition.type != VAL_NULL &&
+						!(condition.type == VAL_BOOL && !condition.as.boolean);
+
+		freeValue(condition);
+
+		// 如果条件为假，退出循环
+		if (!isTruthy)
+			break;
+
+	} while (true);
+}
+
 // 实现for循环语句执行
 static void executeFor(Interpreter *interpreter, Stmt *stmt)
 {
@@ -1402,6 +1524,7 @@ static Value evaluateCall(Interpreter *interpreter, Expr *expr)
  */
 static void executeFunction(Interpreter *interpreter, Stmt *stmt)
 {
+
 	// 创建函数对象
 	Function *function = (Function *)malloc(sizeof(Function));
 	if (function == NULL)
@@ -1423,9 +1546,6 @@ static void executeFunction(Interpreter *interpreter, Stmt *stmt)
 	function->arity = stmt->as.function.paramCount;
 	function->paramTypes = NULL;
 	function->returnType = stmt->as.function.returnType;
-
-	// 这里缺少重要的函数属性设置！
-	// 需要设置参数名、函数体、闭包环境等
 
 	// 分配参数名数组
 	if (function->arity > 0)
@@ -1592,6 +1712,7 @@ static void executeBreak(Interpreter *interpreter, Stmt *stmt)
 static Value callFunction(Interpreter *interpreter, Function *function,
 						  Value *arguments, int argCount)
 {
+
 	if (function->arity != argCount)
 	{
 		runtimeError(interpreter, "期望 %d 个参数，但得到 %d 个。",
@@ -1681,9 +1802,4 @@ void freeInterpreter(Interpreter *interpreter)
 	// 重置错误状态
 	interpreter->hadError = false;
 	interpreter->errorMessage[0] = '\0';
-
-	// 重置返回状态 (确保正确获取returnStatus)
-	// returnStatus.hasReturn = false;
-	// freeValue(returnStatus.value);
-	// returnStatus.value = createNull();
 }

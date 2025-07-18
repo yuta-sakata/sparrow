@@ -31,6 +31,7 @@ static Stmt *forStatement(Parser *parser);
 static Stmt *returnStatement(Parser *parser);
 static Stmt *switchStatement(Parser *parser);
 static Stmt *breakStatement(Parser *parser);
+static Stmt *doWhileStatement(Parser *parser);
 
 // 辅助函数声明
 static int match(Parser *parser, TokenType type);
@@ -88,6 +89,12 @@ Stmt **parse(Parser *parser, int *stmtCount)
             {
                 advance(parser);
             }
+        }
+        else if (stmt == NULL && currentPos == parser->current && !isAtEnd(parser))
+        {
+            // 即使没有错误，如果declaration返回NULL且没有进度，也要前进
+            error(parser, "Failed to parse declaration.");
+            advance(parser);
         }
     }
 
@@ -596,6 +603,9 @@ static Stmt *statement(Parser *parser)
         return forStatement(parser);
     }
 
+    if (match(parser, TOKEN_DO)) 
+        return doWhileStatement(parser);
+
     if (match(parser, TOKEN_RETURN))
     {
         return returnStatement(parser);
@@ -646,6 +656,9 @@ static Stmt *blockStatement(Parser *parser)
 
     while (!check(parser, TOKEN_RBRACE) && !isAtEnd(parser))
     {
+        // 保存当前位置以检测进度
+        int currentPos = parser->current;
+
         Stmt *stmt = declaration(parser);
 
         if (stmt != NULL)
@@ -656,6 +669,25 @@ static Stmt *blockStatement(Parser *parser)
                 statements = (Stmt **)realloc(statements, capacity * sizeof(Stmt *));
             }
             statements[count++] = stmt;
+        }
+
+        // 检查是否有进度，防止无限循环
+        if (parser->hadError)
+        {
+            // 如果有错误，尝试恢复到下一个语句
+            synchronize(parser);
+
+            // 如果没有进度且未到达文件末尾，强制前进
+            if (currentPos == parser->current && !isAtEnd(parser))
+            {
+                advance(parser);
+            }
+        }
+        else if (currentPos == parser->current && !isAtEnd(parser))
+        {
+            // 即使没有错误，如果没有进度也要防止无限循环
+            error(parser, "Unexpected token in block statement.");
+            advance(parser);
         }
     }
 
@@ -882,7 +914,7 @@ static Stmt *switchStatement(Parser *parser)
             caseStatements = (Stmt **)malloc(stmtCapacity * sizeof(Stmt *));
 
             // 解析直到遇到 case、default 或 }
-            while (!check(parser, TOKEN_CASE) && !check(parser, TOKEN_DEFAULT) && 
+            while (!check(parser, TOKEN_CASE) && !check(parser, TOKEN_DEFAULT) &&
                    !check(parser, TOKEN_RBRACE) && !isAtEnd(parser))
             {
                 if (stmtCount >= stmtCapacity)
@@ -910,7 +942,7 @@ static Stmt *switchStatement(Parser *parser)
 
             // 创建块语句
             Stmt *caseBody = createBlockStmt(caseStatements, stmtCount);
-            
+
             cases[caseCount].value = caseValue;
             cases[caseCount].body = caseBody;
             caseCount++;
@@ -931,7 +963,7 @@ static Stmt *switchStatement(Parser *parser)
             int stmtCount = 0;
             defaultStatements = (Stmt **)malloc(stmtCapacity * sizeof(Stmt *));
 
-            while (!check(parser, TOKEN_CASE) && !check(parser, TOKEN_DEFAULT) && 
+            while (!check(parser, TOKEN_CASE) && !check(parser, TOKEN_DEFAULT) &&
                    !check(parser, TOKEN_RBRACE) && !isAtEnd(parser))
             {
                 if (stmtCount >= stmtCapacity)
@@ -990,6 +1022,85 @@ static Stmt *breakStatement(Parser *parser)
         return NULL;
 
     return createBreakStmt(keyword);
+}
+
+static Stmt *doWhileStatement(Parser *parser)
+{
+
+    // 解析循环体
+    Stmt *body = statement(parser);
+    if (parser->hadError)
+    {
+        return NULL;
+    }
+
+    // 期望 while 关键字
+    consume(parser, TOKEN_WHILE, "Expect 'while' after do body.");
+    if (parser->hadError)
+    {
+        if (body)
+            freeStmt(body);
+        return NULL;
+    }
+
+    // 期望左括号
+    consume(parser, TOKEN_LPAREN, "Expect '(' after 'while'.");
+    if (parser->hadError)
+    {
+        if (body)
+            freeStmt(body);
+        return NULL;
+    }
+
+    // 调试：检查当前 token
+    if (isAtEnd(parser))
+    {
+        error(parser, "Unexpected end of file in do-while condition.");
+        if (body)
+            freeStmt(body);
+        return NULL;
+    }
+
+    // 解析条件表达式
+    Expr *condition = expression(parser);
+    if (parser->hadError)
+    {
+        if (body)
+            freeStmt(body);
+        return NULL;
+    }
+
+    if (condition == NULL)
+    {
+        error(parser, "Failed to parse do-while condition expression.");
+        if (body)
+            freeStmt(body);
+        return NULL;
+    }
+
+    // 期望右括号
+    consume(parser, TOKEN_RPAREN, "Expect ')' after do-while condition.");
+    if (parser->hadError)
+    {
+        if (body)
+            freeStmt(body);
+        if (condition)
+            freeExpr(condition);
+        return NULL;
+    }
+
+    // 期望分号
+    consume(parser, TOKEN_SEMICOLON, "Expect ';' after do-while statement.");
+    if (parser->hadError)
+    {
+        if (body)
+            freeStmt(body);
+        if (condition)
+            freeExpr(condition);
+        return NULL;
+    }
+
+    return createDoWhileStmt(body, condition);
 }
 
 // 解析表达式
@@ -1060,7 +1171,8 @@ static Expr *comparison(Parser *parser)
     Expr *expr = term(parser);
 
     while (match(parser, TOKEN_LT) || match(parser, TOKEN_LE) ||
-           match(parser, TOKEN_GT) || match(parser, TOKEN_GE))
+           match(parser, TOKEN_GT) || match(parser, TOKEN_GE) ||
+           match(parser, TOKEN_IN))
     {
         TokenType operator = previous(parser).type;
         Expr *right = term(parser);
@@ -1152,7 +1264,7 @@ static Expr *unary(Parser *parser)
         {
             // 不是类型转换，退回并按分组表达式处理
             parser->current--; // 退回 '('
-            
+
             // 继续处理其他一元表达式
             if (match(parser, TOKEN_NOT) || match(parser, TOKEN_MINUS) || match(parser, TOKEN_PLUS))
             {
@@ -1414,6 +1526,11 @@ static Expr *primary(Parser *parser)
             return NULL;
         }
         return createGroupingExpr(expr);
+    }
+
+    if (parser->hadError)
+    {
+        return NULL;
     }
 
     error(parser, "Expect expression.");

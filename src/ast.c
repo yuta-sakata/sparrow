@@ -178,6 +178,19 @@ Stmt *createWhileStmt(Expr *condition, Stmt *body)
     return stmt;
 }
 
+Stmt *createDoWhileStmt(Stmt *body, Expr *condition)
+{
+    Stmt *stmt = (Stmt *)malloc(sizeof(Stmt));
+    if (stmt == NULL)
+    {
+        return NULL;
+    }
+    stmt->type = STMT_DO_WHILE;
+    stmt->as.doWhile.body = body;
+    stmt->as.doWhile.condition = condition;
+    return stmt;
+}
+
 // 创建for循环
 Stmt *createForStmt(Stmt *initializer, Expr *condition, Expr *increment, Stmt *body)
 {
@@ -796,6 +809,18 @@ void freeStmt(Stmt *stmt)
         freeExpr(stmt->as.whileLoop.condition);
         freeStmt(stmt->as.whileLoop.body);
         break;
+
+     case STMT_DO_WHILE:
+        if (stmt->as.doWhile.body != NULL)
+        {
+            freeStmt(stmt->as.doWhile.body);
+        }
+        if (stmt->as.doWhile.condition != NULL)
+        {
+            freeExpr(stmt->as.doWhile.condition);
+        }
+        break;
+        
     case STMT_FOR:
         if (stmt->as.forLoop.initializer)
         {
