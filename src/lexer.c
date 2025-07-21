@@ -608,6 +608,8 @@ Token nextToken(Lexer *lexer)
         return makeToken(lexer, TOKEN_COMMA);
     case ':':
         return makeToken(lexer, TOKEN_COLON);
+    case '.':
+        return makeToken(lexer, TOKEN_DOT);
     case '+':
         if (match(lexer, '+'))
         {
@@ -739,6 +741,8 @@ const char *getTokenName(TokenType type)
         return "COMMA";
     case TOKEN_COLON:
         return "COLON";
+    case TOKEN_DOT:
+        return "DOT";
     case TOKEN_IF:
         return "IF";
     case TOKEN_ELSE:

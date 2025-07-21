@@ -44,6 +44,7 @@ typedef enum
 	TOKEN_SEMICOLON, // ;
 	TOKEN_COMMA,	 // ,
 	TOKEN_COLON,	 // :
+	TOKEN_DOT,		 // .
 
 	// 关键字
 	TOKEN_IF,		   // if
