@@ -19,6 +19,7 @@ static void executeReturn(Interpreter *interpreter, Stmt *stmt);
 static void executeSwitch(Interpreter *interpreter, Stmt *stmt);
 static void executeBreak(Interpreter *interpreter, Stmt *stmt);
 static void executeEnum(Interpreter *interpreter, Stmt *stmt);
+static void executeStruct(Interpreter *interpreter, Stmt *stmt);
 
 void execute(Interpreter *interpreter, Stmt *stmt) {
     if (stmt == NULL)
@@ -71,6 +72,9 @@ void execute(Interpreter *interpreter, Stmt *stmt) {
         break;
     case STMT_ENUM:
         executeEnum(interpreter, stmt);
+        break;
+    case STMT_STRUCT:
+        executeStruct(interpreter, stmt);
         break;
     default:
         break;
@@ -493,4 +497,29 @@ static void executeEnum(Interpreter *interpreter, Stmt *stmt) {
         freeValue(enumVal);
         currentValue++;
     }
+}
+
+static void executeStruct(Interpreter *interpreter, Stmt *stmt) {
+    // 结构体声明只需要存储结构体的元数据
+    // 在这个简单实现中，我们将结构体信息存储在全局环境中
+    // 实际使用时，结构体字面量会创建具体的结构体实例
+    
+    const char *structName = stmt->as.structStmt.name.lexeme;
+    
+    // 将结构体类型标记存储在全局环境中，这样解析器知道这是一个有效的结构体类型
+    Value structTypeMarker = createString(structName);
+    
+    // 使用特殊前缀来标识这是一个结构体类型定义
+    char *typeName = malloc(strlen(structName) + 8); // "struct_" + name + '\0'
+    if (typeName == NULL) {
+        runtimeError(interpreter, "Memory allocation failed");
+        freeValue(structTypeMarker);
+        return;
+    }
+    
+    sprintf(typeName, "struct_%s", structName);
+    defineConstant(interpreter->globals, typeName, structTypeMarker);
+    
+    free(typeName);
+    freeValue(structTypeMarker);
 }

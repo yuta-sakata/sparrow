@@ -39,6 +39,10 @@ Value evaluate(Interpreter *interpreter, Expr *expr) {
         return evaluateCast(interpreter, expr);
     case EXPR_DOT_ACCESS:
         return evaluateDotAccess(interpreter, expr);
+    case EXPR_STRUCT_LITERAL:
+        return evaluateStructLiteral(interpreter, expr);
+    case EXPR_STRUCT_ASSIGN:
+        return evaluateStructAssign(interpreter, expr);
     }
 
     return createNull();
@@ -143,37 +147,183 @@ Value evaluateAssign(Interpreter *interpreter, Expr *expr) {
 }
 
 Value evaluateDotAccess(Interpreter *interpreter, Expr *expr) {
-    // 对于枚举成员访问，我们需要将 EnumName.MemberName 转换为 EnumName_MemberName
     Expr *object = expr->as.dotAccess.object;
     Token member = expr->as.dotAccess.member;
     
-    // 假设对象是一个变量引用（枚举名）
-    if (object->type != EXPR_VARIABLE) {
-        runtimeError(interpreter, "Can only access members of enums");
+    // 首先求值对象表达式
+    Value objectValue = evaluate(interpreter, object);
+    if (interpreter->hadError) {
         return createNull();
     }
     
-    // 构造完整的枚举成员名称：EnumName_MemberName
-    const char *enumName = object->as.variable.name.lexeme;
-    const char *memberName = member.lexeme;
+    // 检查对象类型
+    if (objectValue.type == VAL_STRUCT) {
+        // 结构体成员访问
+        StructValue *structValue = objectValue.as.structValue;
+        const char *memberName = member.lexeme;
+        
+        // 查找对应的字段
+        for (int i = 0; i < structValue->fieldCount; i++) {
+            if (strcmp(structValue->fields[i].name, memberName) == 0) {
+                Value result = copyValue(*structValue->fields[i].value);
+                freeValue(objectValue);
+                return result;
+            }
+        }
+        
+        // 字段未找到
+        freeValue(objectValue);
+        runtimeError(interpreter, "Struct field not found");
+        return createNull();
+    }
+    else if (object->type == EXPR_VARIABLE) {
+        // 枚举成员访问（保持原有逻辑）
+        freeValue(objectValue); // 释放不需要的值
+        
+        const char *enumName = object->as.variable.name.lexeme;
+        const char *memberName = member.lexeme;
+        
+        // 分配内存来存储完整名称
+        size_t fullNameLen = strlen(enumName) + strlen(memberName) + 2; // +2 for '_' and '\0'
+        char *fullName = malloc(fullNameLen);
+        if (fullName == NULL) {
+            runtimeError(interpreter, "Memory allocation failed");
+            return createNull();
+        }
+        
+        snprintf(fullName, fullNameLen, "%s_%s", enumName, memberName);
+        
+        // 查找枚举成员值
+        Token enumMemberToken;
+        enumMemberToken.lexeme = fullName;
+        enumMemberToken.type = TOKEN_IDENTIFIER;
+        
+        Value result = getVariable(interpreter->globals, enumMemberToken);
+        
+        free(fullName);
+        return result;
+    }
+    else {
+        freeValue(objectValue);
+        runtimeError(interpreter, "Can only access members of structs and enums");
+        return createNull();
+    }
+}
+
+Value evaluateStructLiteral(Interpreter *interpreter, Expr *expr) {
+    const char *structName = expr->as.structLiteral.structName.lexeme;
+    int fieldCount = expr->as.structLiteral.fieldCount;
+    StructFieldInit *fieldInits = expr->as.structLiteral.fields;
     
-    // 分配内存来存储完整名称
-    size_t fullNameLen = strlen(enumName) + strlen(memberName) + 2; // +2 for '_' and '\0'
-    char *fullName = malloc(fullNameLen);
-    if (fullName == NULL) {
+    // 分配结构体字段值数组
+    StructFieldValue *fields = malloc(sizeof(StructFieldValue) * fieldCount);
+    if (fields == NULL) {
         runtimeError(interpreter, "Memory allocation failed");
         return createNull();
     }
     
-    snprintf(fullName, fullNameLen, "%s_%s", enumName, memberName);
+    // 求值每个字段
+    for (int i = 0; i < fieldCount; i++) {
+        // 复制字段名
+        size_t nameLen = strlen(fieldInits[i].name.lexeme);
+        fields[i].name = malloc(nameLen + 1);
+        if (fields[i].name == NULL) {
+            // 清理已分配的内存
+            for (int j = 0; j < i; j++) {
+                free(fields[j].name);
+                freeValue(*fields[j].value);
+                free(fields[j].value);
+            }
+            free(fields);
+            runtimeError(interpreter, "Memory allocation failed");
+            return createNull();
+        }
+        strcpy(fields[i].name, fieldInits[i].name.lexeme);
+        
+        // 求值字段值
+        Value fieldValue = evaluate(interpreter, fieldInits[i].value);
+        if (interpreter->hadError) {
+            // 清理已分配的内存
+            for (int j = 0; j <= i; j++) {
+                free(fields[j].name);
+                if (j < i) {
+                    freeValue(*fields[j].value);
+                    free(fields[j].value);
+                }
+            }
+            free(fields);
+            return createNull();
+        }
+        
+        // 分配并复制值
+        fields[i].value = malloc(sizeof(Value));
+        if (fields[i].value == NULL) {
+            // 清理已分配的内存
+            freeValue(fieldValue);
+            for (int j = 0; j <= i; j++) {
+                free(fields[j].name);
+                if (j < i) {
+                    freeValue(*fields[j].value);
+                    free(fields[j].value);
+                }
+            }
+            free(fields);
+            runtimeError(interpreter, "Memory allocation failed");
+            return createNull();
+        }
+        *fields[i].value = fieldValue;
+    }
     
-    // 查找枚举成员值
-    Token enumMemberToken;
-    enumMemberToken.lexeme = fullName;
-    enumMemberToken.type = TOKEN_IDENTIFIER;
+    return createStruct(structName, fields, fieldCount);
+}
+
+Value evaluateStructAssign(Interpreter *interpreter, Expr *expr) {
+    // 首先求值要赋的值
+    Value value = evaluate(interpreter, expr->as.structAssign.value);
+    if (interpreter->hadError) {
+        return createNull();
+    }
     
-    Value result = getVariable(interpreter->globals, enumMemberToken);
+    // 求值结构体对象
+    Value objectValue = evaluate(interpreter, expr->as.structAssign.object);
+    if (interpreter->hadError) {
+        freeValue(value);
+        return createNull();
+    }
     
-    free(fullName);
-    return result;
+    // 检查对象是否为结构体
+    if (objectValue.type != VAL_STRUCT) {
+        freeValue(value);
+        freeValue(objectValue);
+        runtimeError(interpreter, "Can only assign to struct fields");
+        return createNull();
+    }
+    
+    // 查找并更新字段
+    StructValue *structValue = objectValue.as.structValue;
+    const char *fieldName = expr->as.structAssign.field.lexeme;
+    
+    for (int i = 0; i < structValue->fieldCount; i++) {
+        if (strcmp(structValue->fields[i].name, fieldName) == 0) {
+            // 释放旧值并设置新值
+            freeValue(*structValue->fields[i].value);
+            *structValue->fields[i].value = copyValue(value);
+            
+            // 对于结构体字段赋值，我们需要更新变量环境中的结构体
+            // 这需要找到原始变量并更新它
+            if (expr->as.structAssign.object->type == EXPR_VARIABLE) {
+                Token varName = expr->as.structAssign.object->as.variable.name;
+                assignVariable(interpreter->environment, varName, objectValue);
+            }
+            
+            freeValue(objectValue);
+            return value;
+        }
+    }
+    
+    // 字段未找到
+    freeValue(value);
+    freeValue(objectValue);
+    runtimeError(interpreter, "Struct field not found");
+    return createNull();
 }

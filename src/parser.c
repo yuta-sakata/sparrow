@@ -33,6 +33,7 @@ static Stmt *switchStatement(Parser *parser);
 static Stmt *breakStatement(Parser *parser);
 static Stmt *doWhileStatement(Parser *parser);
 static Stmt *enumDeclaration(Parser *parser);
+static Stmt *structDeclaration(Parser *parser);
 
 // 辅助函数声明
 static int match(Parser *parser, TokenType type);
@@ -166,6 +167,16 @@ static Stmt *declaration(Parser *parser)
             return NULL;
         }
         return enumDeclaration(parser);
+    }
+
+    if (match(parser, TOKEN_STRUCT))
+    {
+        if (isStatic)
+        {
+            error(parser, "Static struct declarations are not supported.");
+            return NULL;
+        }
+        return structDeclaration(parser);
     }
 
     if (match(parser, TOKEN_VAR))
@@ -1341,6 +1352,78 @@ static Stmt *enumDeclaration(Parser *parser)
     return stmt;
 }
 
+static Stmt *structDeclaration(Parser *parser)
+{
+    Token name = consume(parser, TOKEN_IDENTIFIER, "Expect struct name.");
+    if (parser->hadError)
+        return NULL;
+
+    consume(parser, TOKEN_LBRACE, "Expect '{' before struct body.");
+    if (parser->hadError)
+        return NULL;
+
+    // 解析结构体字段
+    int capacity = 8;
+    StructField *fields = (StructField *)malloc(capacity * sizeof(StructField));
+    int fieldCount = 0;
+
+    if (!check(parser, TOKEN_RBRACE))
+    {
+        do
+        {
+            if (fieldCount >= capacity)
+            {
+                capacity *= 2;
+                fields = (StructField *)realloc(fields, capacity * sizeof(StructField));
+            }
+
+            Token fieldName = consume(parser, TOKEN_IDENTIFIER, "Expect field name.");
+            if (parser->hadError)
+            {
+                free(fields);
+                return NULL;
+            }
+
+            consume(parser, TOKEN_COLON, "Expect ':' after field name.");
+            if (parser->hadError)
+            {
+                free(fields);
+                return NULL;
+            }
+
+            TypeAnnotation fieldType = parseTypeAnnotation(parser);
+            if (parser->hadError)
+            {
+                free(fields);
+                return NULL;
+            }
+
+            fields[fieldCount].name = fieldName;
+            fields[fieldCount].type = fieldType;
+            fieldCount++;
+
+            consume(parser, TOKEN_SEMICOLON, "Expect ';' after field declaration.");
+            if (parser->hadError)
+            {
+                free(fields);
+                return NULL;
+            }
+
+        } while (!check(parser, TOKEN_RBRACE) && !isAtEnd(parser));
+    }
+
+    consume(parser, TOKEN_RBRACE, "Expect '}' after struct body.");
+    if (parser->hadError)
+    {
+        free(fields);
+        return NULL;
+    }
+
+    Stmt *stmt = createStructStmt(name, fields, fieldCount);
+
+    return stmt;
+}
+
 // 解析表达式
 static Expr *expression(Parser *parser)
 {
@@ -1377,6 +1460,12 @@ static Expr *assignment(Parser *parser)
             // 数组元素赋值
             return createArrayAssignExpr(expr->as.arrayAccess.array,
                                          expr->as.arrayAccess.index, value);
+        }
+        else if (expr->type == EXPR_DOT_ACCESS)
+        {
+            // 结构体字段赋值
+            return createStructAssignExpr(expr->as.dotAccess.object,
+                                          expr->as.dotAccess.member, value);
         }
 
         error(parser, "Invalid assignment target.");
@@ -1598,6 +1687,86 @@ static Expr *call(Parser *parser)
                 return NULL;
             }
             expr = createDotAccessExpr(expr, member);
+        }
+        else if (match(parser, TOKEN_LBRACE))
+        {
+            // 结构体字面量语法：StructName { field1: value1, field2: value2 }
+            if (expr->type != EXPR_VARIABLE)
+            {
+                error(parser, "Expected struct name before '{'.");
+                freeExpr(expr);
+                return NULL;
+            }
+            
+            Token structName = expr->as.variable.name;
+            freeExpr(expr); // 释放变量表达式，因为我们要创建结构体字面量
+            
+            // 解析字段初始化列表
+            StructFieldInit *fields = NULL;
+            int fieldCount = 0;
+            int capacity = 0;
+            
+            if (!check(parser, TOKEN_RBRACE))
+            {
+                do
+                {
+                    // 扩展容量
+                    if (fieldCount >= capacity)
+                    {
+                        capacity = capacity == 0 ? 4 : capacity * 2;
+                        fields = (StructFieldInit *)realloc(fields, capacity * sizeof(StructFieldInit));
+                        if (fields == NULL)
+                        {
+                            error(parser, "Memory allocation failed.");
+                            return NULL;
+                        }
+                    }
+                    
+                    // 解析字段名
+                    Token fieldName = consume(parser, TOKEN_IDENTIFIER, "Expect field name.");
+                    if (parser->hadError)
+                    {
+                        if (fields) free(fields);
+                        return NULL;
+                    }
+                    
+                    // 期望冒号
+                    consume(parser, TOKEN_COLON, "Expect ':' after field name.");
+                    if (parser->hadError)
+                    {
+                        if (fields) free(fields);
+                        return NULL;
+                    }
+                    
+                    // 解析字段值
+                    Expr *fieldValue = expression(parser);
+                    if (parser->hadError)
+                    {
+                        if (fields) free(fields);
+                        return NULL;
+                    }
+                    
+                    // 添加字段
+                    fields[fieldCount].name = fieldName;
+                    fields[fieldCount].value = fieldValue;
+                    fieldCount++;
+                    
+                } while (match(parser, TOKEN_COMMA));
+            }
+            
+            consume(parser, TOKEN_RBRACE, "Expect '}' after struct fields.");
+            if (parser->hadError)
+            {
+                // 清理内存
+                for (int i = 0; i < fieldCount; i++)
+                {
+                    freeExpr(fields[i].value);
+                }
+                if (fields) free(fields);
+                return NULL;
+            }
+            
+            expr = createStructLiteralExpr(structName, fields, fieldCount);
         }
         else if (match(parser, TOKEN_PLUS_PLUS) || match(parser, TOKEN_MINUS_MINUS))
         {
@@ -1913,7 +2082,6 @@ static TypeAnnotation parseTypeAnnotation(Parser *parser)
     {
         baseType = TYPE_FLOAT;
     }
-
     else if (match(parser, TOKEN_STRING_TYPE))
     {
         baseType = TYPE_STRING;
@@ -1925,6 +2093,11 @@ static TypeAnnotation parseTypeAnnotation(Parser *parser)
     else if (match(parser, TOKEN_VOID))
     {
         baseType = TYPE_VOID;
+    }
+    else if (match(parser, TOKEN_IDENTIFIER))
+    {
+        // 自定义类型（如结构体、枚举等）
+        baseType = TYPE_STRUCT; // 将标识符视为结构体类型
     }
     else
     {
