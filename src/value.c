@@ -522,16 +522,37 @@ Value copyValue(Value value)
         newValue.as.nativeFunction = newNativeFunction;
         return newValue;
     }
-
-    // 处理数组类型
     case VAL_ARRAY:
         if (value.as.array == NULL)
         {
             return createNull();
         }
 
-        // 创建新的数组副本
+        // 添加安全检查
         Array *originalArray = value.as.array;
+
+        // 检查数组结构的完整性
+        if (originalArray->elements == NULL && originalArray->count > 0)
+        {
+            printf("WARNING: Array with NULL elements but non-zero count\n");
+            return createNull();
+        }
+
+        if (originalArray->count < 0 || originalArray->capacity < 0)
+        {
+            printf("WARNING: Array with invalid count or capacity\n");
+            return createNull();
+        }
+
+        // 添加额外的安全检查：确保 count 不超过 capacity
+        if (originalArray->count > originalArray->capacity)
+        {
+            printf("WARNING: Array count (%d) exceeds capacity (%d)\n",
+                   originalArray->count, originalArray->capacity);
+            // 修复：不要直接返回 null，而是尝试修复这个问题
+            originalArray->count = originalArray->capacity;
+        }
+
         Value newArrayValue = createArray(originalArray->elementType, originalArray->capacity);
 
         if (newArrayValue.type == VAL_NULL)
@@ -541,13 +562,52 @@ Value copyValue(Value value)
 
         // 复制所有元素
         Array *newArray = newArrayValue.as.array;
-        for (int i = 0; i < originalArray->count; i++)
+        // 确保不会复制超过实际存在的元素
+        int elementsToCopy = originalArray->count;
+        if (elementsToCopy > originalArray->capacity)
         {
-            newArray->elements[i] = copyValue(originalArray->elements[i]);
-            newArray->count++;
+            elementsToCopy = originalArray->capacity;
         }
 
+        for (int i = 0; i < elementsToCopy; i++)
+        {
+            // 确保不会超出边界，并且原数组的元素指针有效
+            if (i < originalArray->capacity && i < newArray->capacity &&
+                originalArray->elements != NULL)
+            {
+                // 添加额外的安全检查来避免访问未初始化的内存
+                Value elementToCopy = originalArray->elements[i];
+
+                // 检查元素是否有效
+                if (elementToCopy.type == VAL_STRING && elementToCopy.as.string == NULL)
+                {
+                    newArray->elements[i] = createNull();
+                }
+                else if (elementToCopy.type == VAL_ARRAY && elementToCopy.as.array == NULL)
+                {
+                    newArray->elements[i] = createNull();
+                }
+                else if (elementToCopy.type == VAL_FUNCTION && elementToCopy.as.function == NULL)
+                {
+                    newArray->elements[i] = createNull();
+                }
+                else if (elementToCopy.type == VAL_NATIVE_FUNCTION && elementToCopy.as.nativeFunction == NULL)
+                {
+                    newArray->elements[i] = createNull();
+                }
+                else
+                {
+                    newArray->elements[i] = copyValue(elementToCopy);
+                }
+                newArray->count++;
+            }
+            else
+            {
+                break; // 安全退出循环
+            }
+        }
         return newArrayValue;
+
     case VAL_ENUM_VALUE:
         if (value.as.enumValue != NULL)
         {
@@ -627,12 +687,38 @@ void freeValue(Value value)
     case VAL_ARRAY:
         if (value.as.array != NULL)
         {
-            for (int i = 0; i < value.as.array->count; i++)
+            Array *array = value.as.array;
+
+            // 添加双重释放检查
+            if (array->count == -1 && array->capacity == -1)
             {
-                freeValue(value.as.array->elements[i]);
+                // 数组已经被释放过了
+                return;
             }
-            free(value.as.array->elements);
-            free(value.as.array);
+
+            // 检查数组是否已经被部分释放
+            if (array->elements != NULL)
+            {
+                // 验证数组结构的完整性
+                if (array->count >= 0 && array->capacity >= 0 && array->count <= array->capacity)
+                {
+                    for (int i = 0; i < array->count; i++)
+                    {
+                        if (i < array->capacity)
+                        {
+                            freeValue(array->elements[i]);
+                        }
+                    }
+                }
+                free(array->elements);
+                array->elements = NULL; // 防止悬空指针
+            }
+
+            // 标记数组为无效状态
+            array->count = -1;
+            array->capacity = -1;
+
+            free(array);
         }
         break;
     case VAL_ENUM_VALUE:
@@ -675,13 +761,19 @@ Value createArray(BaseType elementType, int initialCapacity)
     array->capacity = initialCapacity > 0 ? initialCapacity : 8;
     array->count = 0;
     array->elementType = elementType;
-    array->elements = (Value *)malloc(sizeof(Value) * array->capacity);
+    array->elements = (Value *)calloc(array->capacity, sizeof(Value)); // 使用 calloc 初始化为0
 
     if (array->elements == NULL)
     {
         free(array);
         val.type = VAL_NULL;
         return val;
+    }
+
+    // 显式初始化所有元素为 NULL
+    for (int i = 0; i < array->capacity; i++)
+    {
+        array->elements[i] = createNull();
     }
 
     val.as.array = array;
@@ -721,10 +813,18 @@ void arrayPush(Array *array, Value value)
         }
 
         array->elements = newElements;
+
+        // 初始化新分配的内存
+        for (int i = array->capacity; i < newCapacity; i++)
+        {
+            array->elements[i] = createNull();
+        }
+
         array->capacity = newCapacity;
     }
 
-    array->elements[array->count] = value;
+    // 使用 copyValue 而不是直接赋值
+    array->elements[array->count] = copyValue(value);
     array->count++;
 }
 
@@ -750,33 +850,46 @@ void arraySet(Array *array, int index, Value value)
         if (newCapacity < array->capacity * 2)
             newCapacity = array->capacity * 2;
 
-        array->elements = (Value *)realloc(array->elements, sizeof(Value) * newCapacity);
-        if (array->elements == NULL)
+        Value *newElements = (Value *)realloc(array->elements, sizeof(Value) * newCapacity);
+        if (newElements == NULL)
         {
             printf("ERROR: Failed to reallocate array memory\n");
             return;
         }
+        array->elements = newElements;
+
+        // 初始化新分配的内存
+        for (int i = array->capacity; i < newCapacity; i++)
+        {
+            array->elements[i] = createNull();
+        }
+
         array->capacity = newCapacity;
     }
 
     // 填充中间的空位
     while (array->count <= index)
     {
-        array->elements[array->count++] = createNull();
+        if (array->count < array->capacity)
+        {
+            array->elements[array->count] = createNull();
+            array->count++;
+        }
+        else
+        {
+            // 这里应该不会发生，因为上面已经扩展了容量
+            printf("ERROR: Array count would exceed capacity\n");
+            return;
+        }
     }
 
     // 修复：释放旧值并设置新值
-    if (index < array->count)
+    if (index < array->count && index < array->capacity)
     {
         freeValue(array->elements[index]);
     }
 
     array->elements[index] = copyValue(value);
-
-    if (index >= array->count)
-    {
-        array->count = index + 1;
-    }
 }
 
 int arrayLength(Array *array)

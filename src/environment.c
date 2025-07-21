@@ -317,20 +317,16 @@ Value getVariable(Environment *env, Token name)
         }
 
         // 特殊处理全局环境中的原生函数
-        if (env->enclosing == NULL && i < 3)
+        if (env->enclosing == NULL && i < 5)
         {
-            // 快速检查名称的首字母
-            if ((name.lexeme[0] == 'p' && strcmp(name.lexeme, "print") == 0) ||
-                (name.lexeme[0] == 'c' && strcmp(name.lexeme, "clock") == 0) ||
-                (name.lexeme[0] == 't' && strcmp(name.lexeme, "type") == 0))
+            // 按照实际注册顺序：print(0), println(1), clock(2), type(3), input(4)
+            if ((name.lexeme[0] == 'p' && strcmp(name.lexeme, "print") == 0 && i == 0) ||
+                (name.lexeme[0] == 'p' && strcmp(name.lexeme, "println") == 0 && i == 1) ||
+                (name.lexeme[0] == 'c' && strcmp(name.lexeme, "clock") == 0 && i == 2) ||
+                (name.lexeme[0] == 't' && strcmp(name.lexeme, "type") == 0 && i == 3) ||
+                (name.lexeme[0] == 'i' && strcmp(name.lexeme, "input") == 0 && i == 4))
             {
-
-                if ((i == 0 && name.lexeme[0] == 'p') ||
-                    (i == 1 && name.lexeme[0] == 'c') ||
-                    (i == 2 && name.lexeme[0] == 't'))
-                {
-                    return copyValue(env->values[i]);
-                }
+                return copyValue(env->values[i]);
             }
         }
         if (env->names[i] != NULL && (uintptr_t)env->names[i] >= 0x1000 &&

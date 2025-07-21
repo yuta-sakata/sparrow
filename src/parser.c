@@ -260,120 +260,20 @@ static Stmt *declaration(Parser *parser)
 
     if (match(parser, TOKEN_CONST)) // 添加常量声明解析
     {
-        // 创建存储多个常量名的数组
-        int capacity = 4;
-        int count = 0;
-        Token *names = (Token *)malloc(sizeof(Token) * capacity);
-
-        // 解析第一个常量名
-        Token name = consume(parser, TOKEN_IDENTIFIER, "Expect constant name.");
-        if (parser->hadError)
+        Stmt *constStmt = constDeclaration(parser);
+        if (constStmt != NULL && isStatic)
         {
-            free(names);
-            return NULL;
-        }
-        names[count++] = name;
-
-        // 处理连续的常量声明（用逗号分隔）
-        while (match(parser, TOKEN_COMMA))
-        {
-            if (count >= capacity)
+            // 根据语句类型设置静态标记
+            if (constStmt->type == STMT_CONST)
             {
-                capacity *= 2;
-                names = (Token *)realloc(names, sizeof(Token) * capacity);
+                constStmt->as.constStmt.isStatic = true;
             }
-
-            name = consume(parser, TOKEN_IDENTIFIER, "Expect constant name after ','.");
-            if (parser->hadError)
+            else if (constStmt->type == STMT_MULTI_CONST)
             {
-                free(names);
-                return NULL;
-            }
-            names[count++] = name;
-        }
-
-        // 处理类型注解
-        TypeAnnotation typeAnnotation;
-        typeAnnotation.kind = TYPE_SIMPLE;
-        typeAnnotation.as.simple = TYPE_ANY; // 默认值
-
-        if (match(parser, TOKEN_COLON))
-        {
-            typeAnnotation = parseTypeAnnotation(parser);
-            if (parser->hadError)
-            {
-                free(names);
-                return NULL;
+                constStmt->as.multiConst.isStatic = true;
             }
         }
-
-        // 常量必须有初始值
-        if (!match(parser, TOKEN_ASSIGN))
-        {
-            error(parser, "Constants must be initialized.");
-            free(names);
-            return NULL;
-        }
-
-        Expr *initializer = expression(parser);
-        if (parser->hadError)
-        {
-            if (initializer)
-                freeExpr(initializer);
-            free(names);
-            return NULL;
-        }
-
-        consume(parser, TOKEN_SEMICOLON, "Expect ';' after constant declaration.");
-        if (parser->hadError)
-        {
-            if (initializer)
-                freeExpr(initializer);
-            free(names);
-            return NULL;
-        }
-
-        // 创建多常量声明语句
-        if (count == 1)
-        {
-            // 只有一个常量，创建单个常量声明
-            Stmt *stmt = createConstStmt(names[0], typeAnnotation, initializer);
-            if (stmt != NULL && isStatic)
-            {
-                stmt->as.constStmt.isStatic = true;
-            }
-            free(names);
-            return stmt;
-        }
-        else
-        {
-            Stmt **constStmts = (Stmt **)malloc(sizeof(Stmt *) * count);
-            if (constStmts == NULL)
-            {
-                if (initializer)
-                    freeExpr(initializer);
-                free(names);
-                return NULL;
-            }
-
-            for (int i = 0; i < count; i++)
-            {
-                Expr *initCopy = (initializer != NULL) ? copyExpr(initializer) : NULL;
-                constStmts[i] = createConstStmt(names[i], typeAnnotation, initCopy);
-                if (constStmts[i] != NULL && isStatic)
-                {
-                    constStmts[i]->as.constStmt.isStatic = true;
-                }
-            }
-
-            if (initializer)
-                freeExpr(initializer);
-            free(names);
-
-            // 返回包含所有常量声明的块语句
-            Stmt *blockStmt = createBlockStmt(constStmts, count);
-            return blockStmt;
-        }
+        return constStmt;
     }
 
     if (isStatic)
@@ -699,9 +599,37 @@ static Stmt *varDeclaration(Parser *parser)
 
 static Stmt *constDeclaration(Parser *parser)
 {
+    // 创建存储多个常量名的数组
+    int capacity = 4;
+    int count = 0;
+    Token *names = (Token *)malloc(sizeof(Token) * capacity);
+
+    // 解析第一个常量名
     Token name = consume(parser, TOKEN_IDENTIFIER, "Expect constant name.");
     if (parser->hadError)
+    {
+        free(names);
         return NULL;
+    }
+    names[count++] = name;
+
+    // 处理连续的常量声明（用逗号分隔）
+    while (match(parser, TOKEN_COMMA))
+    {
+        if (count >= capacity)
+        {
+            capacity *= 2;
+            names = (Token *)realloc(names, sizeof(Token) * capacity);
+        }
+
+        name = consume(parser, TOKEN_IDENTIFIER, "Expect constant name after ','.");
+        if (parser->hadError)
+        {
+            free(names);
+            return NULL;
+        }
+        names[count++] = name;
+    }
 
     TypeAnnotation typeAnnotation;
     typeAnnotation.kind = TYPE_SIMPLE;
@@ -712,33 +640,108 @@ static Stmt *constDeclaration(Parser *parser)
     {
         typeAnnotation = parseTypeAnnotation(parser);
         if (parser->hadError)
+        {
+            free(names);
             return NULL;
+        }
     }
 
     // 常量必须有初始值
     if (!match(parser, TOKEN_ASSIGN))
     {
         error(parser, "Constants must be initialized.");
+        free(names);
         return NULL;
     }
 
-    Expr *initializer = expression(parser);
+    // 解析初始值列表
+    int initializerCapacity = 4;
+    int initializerCount = 0;
+    Expr **initializers = (Expr **)malloc(sizeof(Expr *) * initializerCapacity);
+    
+    // 解析第一个初始值
+    Expr *firstInitializer = expression(parser);
     if (parser->hadError)
     {
-        if (initializer)
-            freeExpr(initializer);
+        if (firstInitializer)
+            freeExpr(firstInitializer);
+        free(names);
+        free(initializers);
         return NULL;
+    }
+    initializers[initializerCount++] = firstInitializer;
+
+    // 处理多个初始值（用逗号分隔）
+    while (match(parser, TOKEN_COMMA) && initializerCount < count)
+    {
+        if (initializerCount >= initializerCapacity)
+        {
+            initializerCapacity *= 2;
+            initializers = (Expr **)realloc(initializers, sizeof(Expr *) * initializerCapacity);
+        }
+
+        Expr *nextInitializer = expression(parser);
+        if (parser->hadError)
+        {
+            for (int i = 0; i < initializerCount; i++)
+            {
+                freeExpr(initializers[i]);
+            }
+            if (nextInitializer)
+                freeExpr(nextInitializer);
+            free(names);
+            free(initializers);
+            return NULL;
+        }
+        initializers[initializerCount++] = nextInitializer;
     }
 
     consume(parser, TOKEN_SEMICOLON, "Expect ';' after constant declaration.");
     if (parser->hadError)
     {
-        if (initializer)
-            freeExpr(initializer);
+        for (int i = 0; i < initializerCount; i++)
+        {
+            freeExpr(initializers[i]);
+        }
+        free(names);
+        free(initializers);
         return NULL;
     }
 
-    return createConstStmt(name, typeAnnotation, initializer);
+    // 为多个常量创建声明语句
+    if (count == 1)
+    {
+        // 只有一个常量，直接创建并返回单个语句
+        Stmt *stmt = createConstStmt(names[0], typeAnnotation, initializers[0]);
+        free(names);
+        free(initializers);
+        return stmt;
+    }
+    else
+    {
+        // 检查初始值数量
+        if (initializerCount == 1)
+        {
+            // 只有一个初始值，直接使用，不复制指针
+            return createMultiConstStmt(names, count, typeAnnotation, initializers, initializerCount);
+        }
+        else if (initializerCount == count)
+        {
+            // 每个常量有自己的初始值
+            return createMultiConstStmt(names, count, typeAnnotation, initializers, initializerCount);
+        }
+        else
+        {
+            error(parser, "Number of initializers must be 1 or equal to number of constants.");
+            for (int i = 0; i < initializerCount; i++)
+            {
+                freeExpr(initializers[i]);
+            }
+            free(names);
+            free(initializers);
+            return NULL;
+        }
+    }
 }
 
 // 解析语句
@@ -1584,6 +1587,17 @@ static Expr *call(Parser *parser)
                 return NULL;
             }
             expr = createArrayAccessExpr(expr, index);
+        }
+        else if (match(parser, TOKEN_DOT))
+        {
+            // 点访问（如枚举成员访问）
+            Token member = consume(parser, TOKEN_IDENTIFIER, "Expect member name after '.'.");
+            if (parser->hadError)
+            {
+                freeExpr(expr);
+                return NULL;
+            }
+            expr = createDotAccessExpr(expr, member);
         }
         else if (match(parser, TOKEN_PLUS_PLUS) || match(parser, TOKEN_MINUS_MINUS))
         {
