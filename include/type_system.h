@@ -15,7 +15,8 @@ typedef enum
     TYPE_STRING,  // 字符串类型
     TYPE_BOOL,    // 布尔类型
     TYPE_FUNCTION, // 函数类型
-    TYPE_ENUM
+    TYPE_ENUM,    // 枚举类型
+    TYPE_STRUCT   // 结构体类型
 } BaseType;
 
 // 类型注解结构

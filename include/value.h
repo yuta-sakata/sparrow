@@ -10,6 +10,9 @@ typedef struct Environment Environment;
 typedef struct Value Value;
 typedef struct Array Array;
 
+// 结构体字段值前向声明
+typedef struct StructFieldValue StructFieldValue;
+
 // 定义值类型
 typedef enum
 {
@@ -20,7 +23,8 @@ typedef enum
     VAL_FUNCTION,
     VAL_NATIVE_FUNCTION,
     VAL_ARRAY,
-    VAL_ENUM_VALUE
+    VAL_ENUM_VALUE,
+    VAL_STRUCT
 } ValueType;
 
 
@@ -31,6 +35,14 @@ typedef struct
     char *memberName;  // 枚举成员名称
     int value;         // 枚举值
 } EnumValue;
+
+// 结构体值结构
+typedef struct
+{
+    char *structName;           // 结构体类型名称
+    StructFieldValue *fields;   // 字段值数组
+    int fieldCount;             // 字段数量
+} StructValue;
 
 // 函数类型前向声明
 typedef struct Function Function;
@@ -57,7 +69,15 @@ struct Value
         NativeFunction *nativeFunction;
         Array *array;
         EnumValue *enumValue;
+        StructValue *structValue;
     } as;
+};
+
+// 结构体字段值定义（必须在 Value 定义之后）
+struct StructFieldValue
+{
+    char *name;        // 字段名称
+    Value *value;      // 字段值指针
 };
 
 // 函数类型
@@ -88,7 +108,9 @@ Value createString(const char *value);
 Value createFunction(Function *function);
 Value createNativeFunction(NativeFunction *function);
 Value createEnumValue(const char *enumName, const char *memberName, int value);
+Value createStruct(const char *structName, StructFieldValue *fields, int fieldCount);
 void freeEnumValue(EnumValue *enumValue);
+void freeStructValue(StructValue *structValue);
 
 // 数组操作函数
 Value createArray(BaseType elementType, int initialCapacity);

@@ -40,6 +40,10 @@ static const char *baseTypeToString(BaseType type)
         return "bool";
     case TYPE_FUNCTION:
         return "function";
+    case TYPE_ENUM:
+        return "enum";
+    case TYPE_STRUCT:
+        return "struct";
     default:
         return "unknown";
     }
@@ -72,6 +76,9 @@ TypeAnnotation tokenToTypeAnnotation(int tokenType)
     case TOKEN_TRUE:
     case TOKEN_FALSE:
         annotation.as.simple = TYPE_BOOL;
+        break;
+    case TOKEN_STRUCT:
+        annotation.as.simple = TYPE_STRUCT;
         break;
     default:
         annotation.as.simple = TYPE_ANY;

@@ -122,6 +122,27 @@ bool valuesEqual(Value a, Value b)
         return a.as.function == b.as.function;
     case VAL_NATIVE_FUNCTION:
         return a.as.nativeFunction == b.as.nativeFunction;
+    case VAL_ARRAY:
+        if (a.as.array == NULL || b.as.array == NULL)
+        {
+            return a.as.array == b.as.array;
+        }
+        
+        // 比较数组长度
+        if (a.as.array->count != b.as.array->count)
+        {
+            return false;
+        }
+        
+        // 比较每个元素
+        for (int i = 0; i < a.as.array->count; i++)
+        {
+            if (!valuesEqual(a.as.array->elements[i], b.as.array->elements[i]))
+            {
+                return false;
+            }
+        }
+        return true;
     case VAL_ENUM_VALUE:
         if (a.as.enumValue == NULL || b.as.enumValue == NULL)
         {
@@ -129,6 +150,58 @@ bool valuesEqual(Value a, Value b)
         }
         return a.as.enumValue->value == b.as.enumValue->value &&
                strcmp(a.as.enumValue->enumName, b.as.enumValue->enumName) == 0;
+    case VAL_STRUCT:
+        if (a.as.structValue == NULL || b.as.structValue == NULL)
+        {
+            return a.as.structValue == b.as.structValue;
+        }
+        
+        // 比较结构体类型名称
+        if (a.as.structValue->structName == NULL || b.as.structValue->structName == NULL)
+        {
+            if (a.as.structValue->structName != b.as.structValue->structName)
+                return false;
+        }
+        else if (strcmp(a.as.structValue->structName, b.as.structValue->structName) != 0)
+        {
+            return false;
+        }
+        
+        // 比较字段数量
+        if (a.as.structValue->fieldCount != b.as.structValue->fieldCount)
+        {
+            return false;
+        }
+        
+        // 比较每个字段
+        for (int i = 0; i < a.as.structValue->fieldCount; i++)
+        {
+            // 比较字段名称
+            if (a.as.structValue->fields[i].name == NULL || b.as.structValue->fields[i].name == NULL)
+            {
+                if (a.as.structValue->fields[i].name != b.as.structValue->fields[i].name)
+                    return false;
+            }
+            else if (strcmp(a.as.structValue->fields[i].name, b.as.structValue->fields[i].name) != 0)
+            {
+                return false;
+            }
+            
+            // 比较字段值
+            Value *aValue = a.as.structValue->fields[i].value;
+            Value *bValue = b.as.structValue->fields[i].value;
+            
+            if (aValue == NULL || bValue == NULL)
+            {
+                if (aValue != bValue)
+                    return false;
+            }
+            else if (!valuesEqual(*aValue, *bValue))
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     return false;
@@ -248,6 +321,49 @@ void printValue(Value value)
             printf("(null enum value)");
         }
         break;
+    case VAL_STRUCT:
+        if (value.as.structValue != NULL)
+        {
+            if (value.as.structValue->structName != NULL)
+            {
+                printf("%s{", value.as.structValue->structName);
+            }
+            else
+            {
+                printf("{");
+            }
+            
+            for (int i = 0; i < value.as.structValue->fieldCount; i++)
+            {
+                if (value.as.structValue->fields[i].name != NULL)
+                {
+                    printf("%s: ", value.as.structValue->fields[i].name);
+                    if (value.as.structValue->fields[i].value != NULL)
+                    {
+                        printValue(*value.as.structValue->fields[i].value);
+                    }
+                    else
+                    {
+                        printf("null");
+                    }
+                }
+                else
+                {
+                    printf("(invalid field)");
+                }
+                
+                if (i < value.as.structValue->fieldCount - 1)
+                {
+                    printf(", ");
+                }
+            }
+            printf("}");
+        }
+        else
+        {
+            printf("(null struct value)");
+        }
+        break;
     default:
         printf("(unknown value type)");
         break;
@@ -306,6 +422,120 @@ Value createEnumValue(const char *enumName, const char *memberName, int value)
     return val;
 }
 
+/**
+ * 创建结构体值
+ */
+Value createStruct(const char *structName, StructFieldValue *fields, int fieldCount)
+{
+    Value val;
+    val.type = VAL_STRUCT;
+
+    StructValue *structValue = (StructValue *)malloc(sizeof(StructValue));
+    if (structValue == NULL)
+    {
+        return createNull();
+    }
+
+    // 复制结构体类型名称
+    if (structName != NULL)
+    {
+        size_t nameLen = strlen(structName);
+        structValue->structName = (char *)malloc(nameLen + 1);
+        if (structValue->structName == NULL)
+        {
+            free(structValue);
+            return createNull();
+        }
+        strcpy(structValue->structName, structName);
+    }
+    else
+    {
+        structValue->structName = NULL;
+    }
+
+    // 复制字段
+    if (fieldCount > 0 && fields != NULL)
+    {
+        structValue->fields = (StructFieldValue *)malloc(sizeof(StructFieldValue) * fieldCount);
+        if (structValue->fields == NULL)
+        {
+            free(structValue->structName);
+            free(structValue);
+            return createNull();
+        }
+
+        for (int i = 0; i < fieldCount; i++)
+        {
+            // 复制字段名称
+            if (fields[i].name != NULL)
+            {
+                size_t fieldNameLen = strlen(fields[i].name);
+                structValue->fields[i].name = (char *)malloc(fieldNameLen + 1);
+                if (structValue->fields[i].name == NULL)
+                {
+                    // 清理已分配的内存
+                    for (int j = 0; j < i; j++)
+                    {
+                        free(structValue->fields[j].name);
+                        if (structValue->fields[j].value != NULL)
+                        {
+                            freeValue(*structValue->fields[j].value);
+                            free(structValue->fields[j].value);
+                        }
+                    }
+                    free(structValue->fields);
+                    free(structValue->structName);
+                    free(structValue);
+                    return createNull();
+                }
+                strcpy(structValue->fields[i].name, fields[i].name);
+            }
+            else
+            {
+                structValue->fields[i].name = NULL;
+            }
+
+            // 复制字段值
+            if (fields[i].value != NULL)
+            {
+                structValue->fields[i].value = (Value *)malloc(sizeof(Value));
+                if (structValue->fields[i].value == NULL)
+                {
+                    // 清理已分配的内存
+                    for (int j = 0; j < i; j++)
+                    {
+                        free(structValue->fields[j].name);
+                        if (structValue->fields[j].value != NULL)
+                        {
+                            freeValue(*structValue->fields[j].value);
+                            free(structValue->fields[j].value);
+                        }
+                    }
+                    free(structValue->fields[i].name);
+                    free(structValue->fields);
+                    free(structValue->structName);
+                    free(structValue);
+                    return createNull();
+                }
+                *structValue->fields[i].value = copyValue(*fields[i].value);
+            }
+            else
+            {
+                structValue->fields[i].value = NULL;
+            }
+        }
+    }
+    else
+    {
+        structValue->fields = NULL;
+    }
+
+    structValue->fieldCount = fieldCount;
+    val.as.structValue = structValue;
+
+    return val;
+}
+
 void freeEnumValue(EnumValue *enumValue)
 {
     if (enumValue == NULL)
@@ -322,6 +552,39 @@ void freeEnumValue(EnumValue *enumValue)
     }
 
     free(enumValue);
+}
+
+/**
+ * 释放结构体值内存
+ */
+void freeStructValue(StructValue *structValue)
+{
+    if (structValue == NULL)
+        return;
+
+    if (structValue->structName != NULL)
+    {
+        free(structValue->structName);
+    }
+
+    if (structValue->fields != NULL)
+    {
+        for (int i = 0; i < structValue->fieldCount; i++)
+        {
+            if (structValue->fields[i].name != NULL)
+            {
+                free(structValue->fields[i].name);
+            }
+            if (structValue->fields[i].value != NULL)
+            {
+                freeValue(*structValue->fields[i].value);
+                free(structValue->fields[i].value);
+            }
+        }
+        free(structValue->fields);
+    }
+
+    free(structValue);
 }
 
 /**
@@ -620,6 +883,83 @@ Value copyValue(Value value)
         {
             return createNull();
         }
+    case VAL_STRUCT:
+        if (value.as.structValue != NULL)
+        {
+            // 复制字段数组
+            StructFieldValue *fieldsCopy = NULL;
+            if (value.as.structValue->fieldCount > 0)
+            {
+                fieldsCopy = (StructFieldValue *)malloc(sizeof(StructFieldValue) * value.as.structValue->fieldCount);
+                if (fieldsCopy == NULL)
+                {
+                    return createNull();
+                }
+                
+                for (int i = 0; i < value.as.structValue->fieldCount; i++)
+                {
+                    // 复制字段名称
+                    if (value.as.structValue->fields[i].name != NULL)
+                    {
+                        size_t nameLen = strlen(value.as.structValue->fields[i].name);
+                        fieldsCopy[i].name = (char *)malloc(nameLen + 1);
+                        if (fieldsCopy[i].name == NULL)
+                        {
+                            // 清理已分配的内存
+                            for (int j = 0; j < i; j++)
+                            {
+                                free(fieldsCopy[j].name);
+                                if (fieldsCopy[j].value != NULL)
+                                {
+                                    freeValue(*fieldsCopy[j].value);
+                                    free(fieldsCopy[j].value);
+                                }
+                            }
+                            free(fieldsCopy);
+                            return createNull();
+                        }
+                        strcpy(fieldsCopy[i].name, value.as.structValue->fields[i].name);
+                    }
+                    else
+                    {
+                        fieldsCopy[i].name = NULL;
+                    }
+                    
+                    // 递归复制字段值
+                    if (value.as.structValue->fields[i].value != NULL)
+                    {
+                        fieldsCopy[i].value = (Value *)malloc(sizeof(Value));
+                        if (fieldsCopy[i].value == NULL)
+                        {
+                            // 清理已分配的内存
+                            for (int j = 0; j < i; j++)
+                            {
+                                free(fieldsCopy[j].name);
+                                if (fieldsCopy[j].value != NULL)
+                                {
+                                    freeValue(*fieldsCopy[j].value);
+                                    free(fieldsCopy[j].value);
+                                }
+                            }
+                            free(fieldsCopy[i].name);
+                            free(fieldsCopy);
+                            return createNull();
+                        }
+                        *fieldsCopy[i].value = copyValue(*value.as.structValue->fields[i].value);
+                    }
+                    else
+                    {
+                        fieldsCopy[i].value = NULL;
+                    }
+                }
+            }
+            
+            return createStruct(value.as.structValue->structName, fieldsCopy, value.as.structValue->fieldCount);
+        }
+        else
+        {
+            return createNull();
+        }
     default:
         // 对于简单值类型，直接复制
         return value;
@@ -725,6 +1065,12 @@ void freeValue(Value value)
         if (value.as.enumValue != NULL)
         {
             freeEnumValue(value.as.enumValue);
+        }
+        break;
+    case VAL_STRUCT:
+        if (value.as.structValue != NULL)
+        {
+            freeStructValue(value.as.structValue);
         }
         break;
     default:

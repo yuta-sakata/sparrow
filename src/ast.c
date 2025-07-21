@@ -330,6 +330,24 @@ Stmt *createEnumStmt(Token name, EnumMember *members, int memberCount)
 }
 
 /**
+ * 创建结构体声明语句
+ */
+Stmt *createStructStmt(Token name, StructField *fields, int fieldCount)
+{
+    Stmt *stmt = (Stmt *)malloc(sizeof(Stmt));
+    if (stmt == NULL)
+    {
+        return NULL;
+    }
+    stmt->type = STMT_STRUCT;
+    stmt->as.structStmt.name = name;
+    stmt->as.structStmt.fields = fields;
+    stmt->as.structStmt.fieldCount = fieldCount;
+
+    return stmt;
+}
+
+/**
  * 深度复制表达式节点
  *
  * 该函数递归地复制一个表达式及其所有子表达式，包括：
@@ -630,6 +648,46 @@ Expr *copyExpr(Expr *expr)
         return createDotAccessExpr(objectCopy, expr->as.dotAccess.member);
     }
 
+    case EXPR_STRUCT_LITERAL:
+    {
+        StructFieldInit *fieldsCopy = (StructFieldInit *)malloc(sizeof(StructFieldInit) * expr->as.structLiteral.fieldCount);
+        if (fieldsCopy == NULL)
+        {
+            return NULL;
+        }
+        
+        for (int i = 0; i < expr->as.structLiteral.fieldCount; i++)
+        {
+            fieldsCopy[i].name = expr->as.structLiteral.fields[i].name;
+            fieldsCopy[i].value = copyExpr(expr->as.structLiteral.fields[i].value);
+            if (fieldsCopy[i].value == NULL)
+            {
+                // 清理已分配的内存
+                for (int j = 0; j < i; j++)
+                {
+                    freeExpr(fieldsCopy[j].value);
+                }
+                free(fieldsCopy);
+                return NULL;
+            }
+        }
+        
+        return createStructLiteralExpr(expr->as.structLiteral.structName, fieldsCopy, expr->as.structLiteral.fieldCount);
+    }
+
+    case EXPR_STRUCT_ASSIGN:
+    {
+        Expr *objectCopy = copyExpr(expr->as.structAssign.object);
+        Expr *valueCopy = copyExpr(expr->as.structAssign.value);
+        if (objectCopy == NULL || valueCopy == NULL)
+        {
+            if (objectCopy) freeExpr(objectCopy);
+            if (valueCopy) freeExpr(valueCopy);
+            return NULL;
+        }
+        return createStructAssignExpr(objectCopy, expr->as.structAssign.field, valueCopy);
+    }
+
     default:
         fprintf(stderr, "未知的表达式类型\n");
         return NULL;
@@ -757,6 +815,38 @@ Expr *createDotAccessExpr(Expr *object, Token member)
 }
 
 /**
+ * 创建结构体字面量表达式
+ */
+Expr *createStructLiteralExpr(Token structName, StructFieldInit *fields, int fieldCount)
+{
+    Expr *expr = (Expr *)malloc(sizeof(Expr));
+    if (expr == NULL)
+        return NULL;
+
+    expr->type = EXPR_STRUCT_LITERAL;
+    expr->as.structLiteral.structName = structName;
+    expr->as.structLiteral.fields = fields;
+    expr->as.structLiteral.fieldCount = fieldCount;
+    return expr;
+}
+
+/**
+ * 创建结构体字段赋值表达式
+ */
+Expr *createStructAssignExpr(Expr *object, Token field, Expr *value)
+{
+    Expr *expr = (Expr *)malloc(sizeof(Expr));
+    if (expr == NULL)
+        return NULL;
+
+    expr->type = EXPR_STRUCT_ASSIGN;
+    expr->as.structAssign.object = object;
+    expr->as.structAssign.field = field;
+    expr->as.structAssign.value = value;
+    return expr;
+}
+
+/**
  * 释放表达式节点及其所有子节点的内存
  *
  * 该函数递归地释放表达式树中的所有节点，包括：
@@ -840,6 +930,29 @@ void freeExpr(Expr *expr)
         if (expr->as.dotAccess.object != NULL)
         {
             freeExpr(expr->as.dotAccess.object);
+        }
+        break;
+    case EXPR_STRUCT_LITERAL:
+        if (expr->as.structLiteral.fields != NULL)
+        {
+            for (int i = 0; i < expr->as.structLiteral.fieldCount; i++)
+            {
+                if (expr->as.structLiteral.fields[i].value != NULL)
+                {
+                    freeExpr(expr->as.structLiteral.fields[i].value);
+                }
+            }
+            free(expr->as.structLiteral.fields);
+        }
+        break;
+    case EXPR_STRUCT_ASSIGN:
+        if (expr->as.structAssign.object != NULL)
+        {
+            freeExpr(expr->as.structAssign.object);
+        }
+        if (expr->as.structAssign.value != NULL)
+        {
+            freeExpr(expr->as.structAssign.value);
         }
         break;
     case EXPR_LITERAL:
@@ -1001,6 +1114,12 @@ void freeStmt(Stmt *stmt)
                 }
             }
             free(stmt->as.enumStmt.members);
+        }
+        break;
+    case STMT_STRUCT:
+        if (stmt->as.structStmt.fields != NULL)
+        {
+            free(stmt->as.structStmt.fields);
         }
         break;
     case STMT_BREAK:

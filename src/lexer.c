@@ -36,6 +36,7 @@ static Keyword keywords[] = {
     {"true", 4, TOKEN_TRUE},
     {"false", 5, TOKEN_FALSE},
     {"enum", 4, TOKEN_ENUM},
+    {"struct", 6, TOKEN_STRUCT},
     {NULL, 0, TOKEN_ERROR} // 表结束标记
 };
 

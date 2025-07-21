@@ -26,6 +26,8 @@ typedef enum
     EXPR_ARRAY_ASSIGN,  // 数组赋值
     EXPR_CAST,          // 类型转换表达式
     EXPR_DOT_ACCESS,    // 点访问表达式（如 obj.member）
+    EXPR_STRUCT_LITERAL, // 结构体字面量
+    EXPR_STRUCT_ASSIGN,  // 结构体字段赋值
 } ExprType;
 
 // 语句类型
@@ -46,6 +48,7 @@ typedef enum
     STMT_BREAK,      // break语句
     STMT_DO_WHILE,   // do-while循环
     STMT_ENUM,       // 枚举声明
+    STMT_STRUCT,     // 结构体声明
 } StmtType;
 
 // 枚举成员结构
@@ -62,6 +65,21 @@ typedef struct
     EnumMember *members; // 枚举成员数组
     int memberCount;     // 成员数量
 } EnumStmt;
+
+// 结构体字段结构
+typedef struct
+{
+    Token name;          // 字段名称
+    TypeAnnotation type; // 字段类型
+} StructField;
+
+// 结构体声明语句结构
+typedef struct
+{
+    Token name;            // 结构体类型名称
+    StructField *fields;   // 字段数组
+    int fieldCount;        // 字段数量
+} StructStmt;
 
 // 常量声明语句结构
 typedef struct
@@ -192,6 +210,29 @@ typedef struct
     Token member;   // 成员名称
 } DotAccessExpr;
 
+// 结构体字段初始化
+typedef struct
+{
+    Token name;     // 字段名称
+    Expr *value;    // 字段值
+} StructFieldInit;
+
+// 结构体字面量表达式
+typedef struct
+{
+    Token structName;            // 结构体类型名称
+    StructFieldInit *fields;     // 字段初始化数组
+    int fieldCount;              // 字段数量
+} StructLiteralExpr;
+
+// 结构体字段赋值表达式
+typedef struct
+{
+    Expr *object;   // 被赋值的结构体对象
+    Token field;    // 字段名称
+    Expr *value;    // 赋值的值
+} StructAssignExpr;
+
 // 表达式结构
 typedef struct Expr
 {
@@ -212,6 +253,8 @@ typedef struct Expr
         ArrayAssignExpr arrayAssign;   // 数组赋值表达式
         CastExpr cast;                 // 类型转换表达式
         DotAccessExpr dotAccess;       // 点访问表达式
+        StructLiteralExpr structLiteral; // 结构体字面量表达式
+        StructAssignExpr structAssign;   // 结构体字段赋值表达式
     } as;
 } Expr;
 
@@ -329,6 +372,7 @@ struct Stmt
         BreakStmt breakStmt;       // break语句
         DoWhileStmt doWhile;       // do-while循环
         EnumStmt enumStmt;         // 枚举声明
+        StructStmt structStmt;     // 结构体声明
     } as;
 };
 
@@ -348,6 +392,8 @@ Expr *createArrayAccessExpr(Expr *array, Expr *index);
 Expr *createArrayAssignExpr(Expr *array, Expr *index, Expr *value);
 Expr *createCastExpr(BaseType targetType, Expr *expression);
 Expr *createDotAccessExpr(Expr *object, Token member);
+Expr *createStructLiteralExpr(Token structName, StructFieldInit *fields, int fieldCount);
+Expr *createStructAssignExpr(Expr *object, Token field, Expr *value);
 
 // 创建语句节点的函数
 Stmt *createExpressionStmt(Expr *expression);
@@ -365,6 +411,7 @@ Stmt *createReturnStmt(Token keyword, Expr *value);
 Stmt *createSwitchStmt(Expr *discriminant, CaseStmt *cases, int caseCount);
 Stmt *createBreakStmt(Token keyword);
 Stmt *createEnumStmt(Token name, EnumMember *members, int memberCount);
+Stmt *createStructStmt(Token name, StructField *fields, int fieldCount);
 Stmt *createStaticVarStmt(Token name, TypeAnnotation type, Expr *initializer);
 Stmt *createStaticFunctionStmt(Token name, Token *params, bool *paramHasVar, TypeAnnotation *paramTypes, int paramCount, TypeAnnotation returnType, Stmt *body);
 
