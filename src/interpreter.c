@@ -26,6 +26,7 @@ static void executeExpression(Interpreter *interpreter, Stmt *stmt);										//
 static void executeVar(Interpreter *interpreter, Stmt *stmt);												// 处理变量声明
 static void executeConst(Interpreter *interpreter, Stmt *stmt);												// 处理常量声明
 static void executeMultiVar(Interpreter *interpreter, Stmt *stmt);											// 处理多变量声明
+static void executeMultiConst(Interpreter *interpreter, Stmt *stmt);										// 处理多常量声明
 static void executeBlock(Interpreter *interpreter, Stmt **statements, int count, Environment *environment); // 处理代码块
 static void executeIf(Interpreter *interpreter, Stmt *stmt);												// 处理 if 语句
 static void executeWhile(Interpreter *interpreter, Stmt *stmt);												// 处理 while 循环
@@ -170,6 +171,9 @@ void execute(Interpreter *interpreter, Stmt *stmt)
 	case STMT_MULTI_VAR:
 		executeMultiVar(interpreter, stmt);
 		break;
+	case STMT_MULTI_CONST:
+        executeMultiConst(interpreter, stmt);
+        break;
 	case STMT_BLOCK:
 		executeBlock(interpreter, stmt->as.block.statements,
 					 stmt->as.block.count,
@@ -329,25 +333,72 @@ static void executeConst(Interpreter *interpreter, Stmt *stmt)
 // 解析多变量声明
 static void executeMultiVar(Interpreter *interpreter, Stmt *stmt)
 {
-	// 评估初始值（如果有）
-	Value initialValue = createNull();
-	if (stmt->as.multiVar.initializer != NULL)
-	{
-		initialValue = evaluate(interpreter, stmt->as.multiVar.initializer);
-	}
+    // 评估初始值（如果有）
+    Value initialValue = createNull();
+    if (stmt->as.multiVar.initializer != NULL)
+    {
+        initialValue = evaluate(interpreter, stmt->as.multiVar.initializer);
+        if (interpreter->hadError)
+        {
+            freeValue(initialValue);
+            return;
+        }
+    }
 
-	// 为每个变量定义相同的值（复制初始值）
-	for (int i = 0; i < stmt->as.multiVar.count; i++)
-	{
-		Value valueCopy = copyValue(initialValue);
-		defineVariable(interpreter->environment, stmt->as.multiVar.names[i].lexeme, valueCopy);
-		freeValue(valueCopy); // defineVariable会创建自己的副本
-	}
+    // 为每个变量定义相同的值（复制初始值）
+    for (int i = 0; i < stmt->as.multiVar.count; i++)
+    {
+        if (stmt->as.multiVar.isStatic)
+        {
+            // 静态变量存储在静态存储中
+            defineStaticVariable(interpreter->staticStorage, stmt->as.multiVar.names[i].lexeme, initialValue, false);
+        }
+        else
+        {
+            // 普通变量存储在当前环境中
+            Value valueCopy = copyValue(initialValue);
+            defineVariable(interpreter->environment, stmt->as.multiVar.names[i].lexeme, valueCopy);
+            freeValue(valueCopy); // defineVariable会创建自己的副本
+        }
+    }
 
-	// 释放原始初始值
-	freeValue(initialValue);
+    // 释放原始初始值
+    freeValue(initialValue);
 }
 
+static void executeMultiConst(Interpreter *interpreter, Stmt *stmt)
+{
+	// 常量必须有初始值
+	if (stmt->as.multiConst.initializer == NULL)
+	{
+		runtimeError(interpreter, "Constants must be initialized.");
+		return;
+	}
+
+	Value initialValue = evaluate(interpreter, stmt->as.multiConst.initializer);
+	if (interpreter->hadError)
+	{
+		freeValue(initialValue);
+		return;
+	}
+
+	// 为每个常量定义相同的值
+	for (int i = 0; i < stmt->as.multiConst.count; i++)
+	{
+		if (stmt->as.multiConst.isStatic)
+		{
+			// 静态常量存储在静态存储中
+			defineStaticVariable(interpreter->staticStorage, stmt->as.multiConst.names[i].lexeme, initialValue, true);
+		}
+		else
+		{
+			// 普通常量存储在当前环境中
+			defineConstant(interpreter->environment, stmt->as.multiConst.names[i].lexeme, initialValue);
+		}
+	}
+
+	freeValue(initialValue);
+}
 // 执行代码块
 static void executeBlock(Interpreter *interpreter, Stmt **statements, int count, Environment *environment)
 {
@@ -1712,21 +1763,21 @@ static void executeFunction(Interpreter *interpreter, Stmt *stmt)
 
 	// 检查是否是静态函数
 	if (stmt->as.function.isStatic)
-    {
-        // 静态函数应该在全局环境中可见
-        Value functionValue;
-        functionValue.type = VAL_FUNCTION;
-        functionValue.as.function = function;
-        defineVariable(interpreter->globals, function->name, functionValue);
-    }
-    else
-    {
-        // 普通函数也在全局环境中定义
-        Value functionValue;
-        functionValue.type = VAL_FUNCTION;
-        functionValue.as.function = function;
-        defineVariable(interpreter->globals, function->name, functionValue);
-    }
+	{
+		// 静态函数应该在全局环境中可见
+		Value functionValue;
+		functionValue.type = VAL_FUNCTION;
+		functionValue.as.function = function;
+		defineVariable(interpreter->globals, function->name, functionValue);
+	}
+	else
+	{
+		// 普通函数也在全局环境中定义
+		Value functionValue;
+		functionValue.type = VAL_FUNCTION;
+		functionValue.as.function = function;
+		defineVariable(interpreter->globals, function->name, functionValue);
+	}
 }
 
 // 执行返回语句

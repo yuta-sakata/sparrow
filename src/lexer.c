@@ -789,6 +789,24 @@ const char *getTokenName(TokenType type)
         return "DO";
     case TOKEN_BREAK:
         return "BREAK";
+    case TOKEN_IN:
+        return "IN";
+    case TOKEN_NULL:
+        return "NULL";
+    case TOKEN_TRUE:
+        return "TRUE";
+    case TOKEN_FALSE:
+        return "FALSE";
+    case TOKEN_IMPORT:
+        return "IMPORT";
+    case TOKEN_LBRACKET:
+        return "LEFT_BRACKET";
+    case TOKEN_RBRACKET:
+        return "RIGHT_BRACKET";
+    case TOKEN_PLUS_PLUS:
+        return "PLUS_PLUS";
+    case TOKEN_MINUS_MINUS:
+        return "MINUS_MINUS";
     default:
         return "UNKNOWN";
     }

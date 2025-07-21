@@ -34,6 +34,7 @@ typedef enum
     STMT_VAR,        // 变量声明
     STMT_CONST,      // 常量声明
     STMT_MULTI_VAR,  // 多变量声明
+    STMT_MULTI_CONST, // 多常量声明
     STMT_BLOCK,      // 代码块
     STMT_IF,         // if语句
     STMT_WHILE,      // while循环
@@ -77,7 +78,18 @@ typedef struct
     int count;           // 变量数量
     TypeAnnotation type; // 共享的类型
     Expr *initializer;   // 共享的初始值
+    bool isStatic;       // 是否为静态变量
 } MultiVarStmt;
+
+// 多常量声明语句结构
+typedef struct
+{
+    Token *names;        // 常量名数组
+    int count;           // 常量数量
+    TypeAnnotation type; // 共享的类型
+    Expr *initializer;   // 共享的初始值（常量必须有初始值）
+    bool isStatic;       // 是否为静态常量
+} MultiConstStmt;
 
 // 二元表达式
 typedef struct
@@ -296,6 +308,7 @@ struct Stmt
         VarStmt var;               // 变量声明
         ConstStmt constStmt;       // 常量声明
         MultiVarStmt multiVar;     // 多变量声明
+        MultiConstStmt multiConst; // 多常量声明
         BlockStmt block;           // 代码块
         IfStmt ifStmt;             // if语句
         WhileStmt whileLoop;       // while循环
@@ -330,6 +343,7 @@ Stmt *createExpressionStmt(Expr *expression);
 Stmt *createVarStmt(Token name, TypeAnnotation type, Expr *initializer);
 Stmt *createConstStmt(Token name, TypeAnnotation type, Expr *initializer);
 Stmt *createMultiVarStmt(Token *names, int count, TypeAnnotation type, Expr *initializer);
+Stmt *createMultiConstStmt(Token *names, int count, TypeAnnotation type, Expr *initializer);
 Stmt *createBlockStmt(Stmt **statements, int count);
 Stmt *createIfStmt(Expr *condition, Stmt *thenBranch, Stmt *elseBranch);
 Stmt *createWhileStmt(Expr *condition, Stmt *body);
@@ -342,6 +356,7 @@ Stmt *createBreakStmt(Token keyword);
 Stmt *createEnumStmt(Token name, EnumMember *members, int memberCount);
 Stmt *createStaticVarStmt(Token name, TypeAnnotation type, Expr *initializer);
 Stmt *createStaticFunctionStmt(Token name, Token *params, bool *paramHasVar, TypeAnnotation *paramTypes, int paramCount, TypeAnnotation returnType, Stmt *body);
+
 
 
 // 释放AST节点内存

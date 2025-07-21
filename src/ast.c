@@ -96,13 +96,34 @@ Expr *createPrefixExpr(Expr *operand, TokenType op)
 Stmt *createMultiVarStmt(Token *names, int count, TypeAnnotation type, Expr *initializer)
 {
     Stmt *stmt = (Stmt *)malloc(sizeof(Stmt));
+    if (stmt == NULL)
+    {
+        return NULL;
+    }
     stmt->type = STMT_MULTI_VAR;
 
     stmt->as.multiVar.names = names; // 直接使用传入的名称数组
     stmt->as.multiVar.count = count;
     stmt->as.multiVar.type = type;
     stmt->as.multiVar.initializer = initializer;
+    stmt->as.multiVar.isStatic = false; // 默认非静态
 
+    return stmt;
+}
+
+Stmt *createMultiConstStmt(Token *names, int count, TypeAnnotation type, Expr *initializer)
+{
+    Stmt *stmt = (Stmt *)malloc(sizeof(Stmt));
+    if (stmt == NULL)
+    {
+        return NULL;
+    }
+    stmt->type = STMT_MULTI_CONST;
+    stmt->as.multiConst.names = names;
+    stmt->as.multiConst.count = count;
+    stmt->as.multiConst.type = type;
+    stmt->as.multiConst.initializer = initializer;
+    stmt->as.multiConst.isStatic = false; // 默认非静态
     return stmt;
 }
 

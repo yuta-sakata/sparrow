@@ -234,7 +234,6 @@ static Stmt *declaration(Parser *parser)
             return NULL;
         }
 
-        // 为多个变量创建声明语句
         if (count == 1)
         {
             // 只有一个变量，直接创建并返回单个语句
@@ -248,26 +247,114 @@ static Stmt *declaration(Parser *parser)
         }
         else
         {
-            if (isStatic)
+            // 多个变量声明
+            Stmt *stmt = createMultiVarStmt(names, count, typeAnnotation, initializer);
+            if (stmt != NULL && isStatic)
             {
-                error(parser, "Static multi-variable declarations are not currently supported.");
-                if (initializer)
-                    freeExpr(initializer);
-                free(names);
-                return NULL;
+                // 为多变量声明添加静态标记支持
+                stmt->as.multiVar.isStatic = true;
             }
-            return createMultiVarStmt(names, count, typeAnnotation, initializer);
+            return stmt;
         }
     }
 
     if (match(parser, TOKEN_CONST)) // 添加常量声明解析
     {
-        Stmt *constStmt = constDeclaration(parser);
-        if (constStmt != NULL && isStatic)
+        // 创建存储多个常量名的数组
+        int capacity = 4;
+        int count = 0;
+        Token *names = (Token *)malloc(sizeof(Token) * capacity);
+
+        // 解析第一个常量名
+        Token name = consume(parser, TOKEN_IDENTIFIER, "Expect constant name.");
+        if (parser->hadError)
         {
-            constStmt->as.constStmt.isStatic = true;
+            free(names);
+            return NULL;
         }
-        return constStmt;
+        names[count++] = name;
+
+        // 处理连续的常量声明（用逗号分隔）
+        while (match(parser, TOKEN_COMMA))
+        {
+            if (count >= capacity)
+            {
+                capacity *= 2;
+                names = (Token *)realloc(names, sizeof(Token) * capacity);
+            }
+
+            name = consume(parser, TOKEN_IDENTIFIER, "Expect constant name after ','.");
+            if (parser->hadError)
+            {
+                free(names);
+                return NULL;
+            }
+            names[count++] = name;
+        }
+
+        // 处理类型注解
+        TypeAnnotation typeAnnotation;
+        typeAnnotation.kind = TYPE_SIMPLE;
+        typeAnnotation.as.simple = TYPE_ANY; // 默认值
+
+        if (match(parser, TOKEN_COLON))
+        {
+            typeAnnotation = parseTypeAnnotation(parser);
+            if (parser->hadError)
+            {
+                free(names);
+                return NULL;
+            }
+        }
+
+        // 常量必须有初始值
+        if (!match(parser, TOKEN_ASSIGN))
+        {
+            error(parser, "Constants must be initialized.");
+            free(names);
+            return NULL;
+        }
+
+        Expr *initializer = expression(parser);
+        if (parser->hadError)
+        {
+            if (initializer)
+                freeExpr(initializer);
+            free(names);
+            return NULL;
+        }
+
+        consume(parser, TOKEN_SEMICOLON, "Expect ';' after constant declaration.");
+        if (parser->hadError)
+        {
+            if (initializer)
+                freeExpr(initializer);
+            free(names);
+            return NULL;
+        }
+
+        // 创建多常量声明语句
+        if (count == 1)
+        {
+            // 只有一个常量，创建单个常量声明
+            Stmt *stmt = createConstStmt(names[0], typeAnnotation, initializer);
+            if (stmt != NULL && isStatic)
+            {
+                stmt->as.constStmt.isStatic = true;
+            }
+            free(names);
+            return stmt;
+        }
+        else
+        {
+            // 多个常量，创建多常量声明
+            Stmt *stmt = createMultiConstStmt(names, count, typeAnnotation, initializer);
+            if (stmt != NULL && isStatic)
+            {
+                stmt->as.multiConst.isStatic = true;
+            }
+            return stmt;
+        }
     }
 
     if (isStatic)
