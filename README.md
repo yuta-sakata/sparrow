@@ -75,23 +75,7 @@
 
 ```
 sparrow/
-├── build/                    # 编译中间文件
-│   ├── *.o                  # 核心模块目标文件
-│   ├── interpreter/         # 解释器模块目标文件
-│   │   ├── array_operations.o
-│   │   ├── binary_operations.o
-│   │   ├── cast_operations.o
-│   │   ├── expression_evaluator.o
-│   │   ├── function_calls.o
-│   │   ├── interpreter_core.o
-│   │   ├── statement_executor.o
-│   │   └── unary_operations.o
-│   └── parser/              # 解析器模块目标文件
-│       ├── declaration_parser.o
-│       ├── expression_parser.o
-│       ├── parser_core.o
-│       ├── statement_parser.o
-│       └── type_parser.o
+│
 ├── include/                 # 头文件目录
 │   ├── ast.h               # 抽象语法树定义
 │   ├── environment.h       # 环境管理接口
@@ -143,8 +127,7 @@ sparrow/
 │       ├── statement_parser.c     # 语句解析
 │       ├── expression_parser.c    # 表达式解析
 │       └── type_parser.c          # 类型解析
-├── test.spw               # 完整测试文件
-├── index.html             # 项目文档页面
+├── test.spw               # 测试文件
 ├── Makefile               # 构建配置
 └── README.md              # 项目文档
 ```
