@@ -80,6 +80,7 @@ void registerAllNativeFunctions(Interpreter *interpreter)
     registerNativeFunction(interpreter, "length", 1, lengthNative);
     registerNativeFunction(interpreter, "push", 2, pushNative);
     registerNativeFunction(interpreter, "pop", 1, popNative);
+    registerNativeFunction(interpreter, "popArray", 1, popArrayNative);
     registerNativeFunction(interpreter, "slice", -1, sliceNative); // -1表示可变参数（2或3个）
 
     // 标记解释器支持 main 函数
@@ -315,7 +316,15 @@ Value pushNative(int argCount, Value *args)
         return createNull();
     }
 
-    Array *array = args[0].as.array;
+    // 创建数组的副本以避免修改原数组
+    Value arrayValue = copyValue(args[0]);
+    if (arrayValue.type == VAL_NULL || arrayValue.as.array == NULL)
+    {
+        printf("ERROR: failed to copy array\n");
+        return createNull();
+    }
+
+    Array *array = arrayValue.as.array;
 
     // 确保数组有足够容量
     if (array->count >= array->capacity)
@@ -324,12 +333,21 @@ Value pushNative(int argCount, Value *args)
         if (newCapacity < 8)
             newCapacity = 8;
 
-        array->elements = (Value *)realloc(array->elements, sizeof(Value) * newCapacity);
-        if (array->elements == NULL)
+        Value *newElements = (Value *)realloc(array->elements, sizeof(Value) * newCapacity);
+        if (newElements == NULL)
         {
             printf("ERROR: failed to expand array\n");
+            freeValue(arrayValue);
             return createNull();
         }
+        array->elements = newElements;
+
+        // 初始化新分配的内存
+        for (int i = array->capacity; i < newCapacity; i++)
+        {
+            array->elements[i] = createNull();
+        }
+
         array->capacity = newCapacity;
     }
 
@@ -338,11 +356,11 @@ Value pushNative(int argCount, Value *args)
     array->elements[array->count] = elementCopy;
     array->count++;
 
-    // 返回原数组的引用，不是副本
-    return args[0];
+    // 返回修改后的数组副本
+    return arrayValue;
 }
 
-// 实现数组pop原生函数
+// 实现数组pop原生函数 - 返回弹出的元素，但不修改原数组
 Value popNative(int argCount, Value *args)
 {
     if (argCount != 1)
@@ -372,15 +390,57 @@ Value popNative(int argCount, Value *args)
         return createNull();
     }
 
-    // 获取最后一个元素的副本
-    Value lastElement = copyValue(array->elements[array->count - 1]);
+    // 返回最后一个元素的副本
+    return copyValue(array->elements[array->count - 1]);
+}
 
-    // 释放原来的元素
+// 实现数组popArray原生函数 - 返回移除最后元素的新数组
+Value popArrayNative(int argCount, Value *args)
+{
+    if (argCount != 1)
+    {
+        return createString("Error: popArray() requires exactly one argument");
+    }
+
+    if (args == NULL)
+    {
+        return createString("Error: NULL arguments passed to popArray()");
+    }
+
+    if (args[0].type != VAL_ARRAY)
+    {
+        return createString("Error: popArray() can only be called on arrays");
+    }
+
+    if (args[0].as.array == NULL)
+    {
+        return createString("Error: NULL array passed to popArray()");
+    }
+
+    Array *originalArray = args[0].as.array;
+
+    if (originalArray->count == 0)
+    {
+        // 返回空数组的副本
+        return copyValue(args[0]);
+    }
+
+    // 创建数组的副本
+    Value arrayValue = copyValue(args[0]);
+    if (arrayValue.type == VAL_NULL || arrayValue.as.array == NULL)
+    {
+        printf("ERROR: failed to copy array\n");
+        return createNull();
+    }
+
+    Array *array = arrayValue.as.array;
+
+    // 释放最后一个元素
     freeValue(array->elements[array->count - 1]);
     array->count--;
 
-    // 返回弹出的元素副本
-    return lastElement;
+    // 返回修改后的数组副本
+    return arrayValue;
 }
 
 // 实现数组切片原生函数
