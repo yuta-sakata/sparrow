@@ -125,7 +125,7 @@ Value printlnNative(int argCount, Value *args)
     return createNull();
 }
 
-//input 原生函数
+// input 原生函数
 Value inputNative(int argCount, Value *args)
 {
     // 检查参数数量（0个或1个）
@@ -175,54 +175,79 @@ Value inputNative(int argCount, Value *args)
     // 创建字符串值
     Value result = createString(buffer);
     free(buffer);
-    
+
     return result;
 }
 
 // 实现 clock 原生函数
 Value clockNative(int argCount, Value *args)
 {
+    if (argCount != 0)
+    {
+        printf("ERROR: clock() takes no arguments\n");
+        return createNull();
+    }
+    
     return createNumber((double)time(NULL));
 }
 
 // 实现 type 原生函数
 Value typeNative(int argCount, Value *args)
 {
-    if (argCount != 1 || args == NULL)
+    if (argCount != 1)
     {
-        return createString("Error: type() requires exactly one argument");
+        return createString("ERROR: type() expects exactly 1 argument");
     }
 
-    char *typeStr;
-    switch (args[0].type)
+    // 添加参数验证
+    if (args == NULL)
     {
-    case VAL_NULL:
-        typeStr = "null";
-        break;
-    case VAL_BOOL:
-        typeStr = "boolean";
-        break;
+        return createString("ERROR: NULL arguments passed to type()");
+    }
+
+    Value arg = args[0];
+    const char *typeName;
+
+    switch (arg.type)
+    {
     case VAL_NUMBER:
-        typeStr = "number";
+        // 检查是否为整数
+        if (arg.as.number == (int)arg.as.number)
+        {
+            typeName = "int";
+        }
+        else
+        {
+            typeName = "float";
+        }
         break;
     case VAL_STRING:
-        typeStr = "string";
+        typeName = "string";
         break;
-    case VAL_FUNCTION:
-        typeStr = "function";
+    case VAL_BOOL:
+        typeName = "bool";
         break;
-    case VAL_NATIVE_FUNCTION:
-        typeStr = "native function";
+    case VAL_NULL:
+        typeName = "null";
         break;
     case VAL_ARRAY:
-        typeStr = "array";
+        typeName = "array";
+        break;
+    case VAL_FUNCTION:
+        typeName = "function";
+        break;
+    case VAL_NATIVE_FUNCTION:
+        typeName = "native_function";
+        break;
+    case VAL_ENUM_VALUE:
+        typeName = "enum";
         break;
     default:
-        typeStr = "unknown";
+        typeName = "unknown";
         break;
     }
 
-    return createString(typeStr);
+    return createString(typeName);
 }
 
 // 实现数组长度原生函数
@@ -267,28 +292,30 @@ Value pushNative(int argCount, Value *args)
 {
     if (argCount != 2)
     {
-        return createString("Error: push() requires exactly two arguments (array, element)");
+        printf("ERROR: push() requires exactly two arguments (array, element)\n");
+        return createNull();
     }
 
     if (args == NULL)
     {
-        return createString("Error: NULL arguments passed to push()");
+        printf("ERROR: NULL arguments passed to push()\n");
+        return createNull();
     }
 
     // 检查第一个参数是否为数组
     if (args[0].type != VAL_ARRAY)
     {
-        return createString("Error: first argument to push() must be an array");
+        printf("ERROR: first argument to push() must be an array\n");
+        return createNull();
     }
 
     if (args[0].as.array == NULL)
     {
-        return createString("Error: NULL array passed to push()");
+        printf("ERROR: NULL array passed to push()\n");
+        return createNull();
     }
 
-    // 创建原数组的完整副本
-    Value newArrayValue = copyValue(args[0]);
-    Array *array = newArrayValue.as.array;
+    Array *array = args[0].as.array;
 
     // 确保数组有足够容量
     if (array->count >= array->capacity)
@@ -300,7 +327,8 @@ Value pushNative(int argCount, Value *args)
         array->elements = (Value *)realloc(array->elements, sizeof(Value) * newCapacity);
         if (array->elements == NULL)
         {
-            return createString("Error: failed to expand array");
+            printf("ERROR: failed to expand array\n");
+            return createNull();
         }
         array->capacity = newCapacity;
     }
@@ -310,8 +338,8 @@ Value pushNative(int argCount, Value *args)
     array->elements[array->count] = elementCopy;
     array->count++;
 
-    // 返回修改后的数组
-    return newArrayValue;
+    // 返回原数组的引用，不是副本
+    return args[0];
 }
 
 // 实现数组pop原生函数
@@ -344,11 +372,15 @@ Value popNative(int argCount, Value *args)
         return createNull();
     }
 
-    Value lastElement = array->elements[array->count - 1];
+    // 获取最后一个元素的副本
+    Value lastElement = copyValue(array->elements[array->count - 1]);
+
+    // 释放原来的元素
+    freeValue(array->elements[array->count - 1]);
     array->count--;
 
-    // 返回弹出的元素（创建副本）
-    return copyValue(lastElement);
+    // 返回弹出的元素副本
+    return lastElement;
 }
 
 // 实现数组切片原生函数

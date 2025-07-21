@@ -71,9 +71,7 @@ Value createString(const char *value)
         return val;
     }
 
-    // 复制字符串内容
-    strncpy(val.as.string, value, len);
-    val.as.string[len] = '\0';
+    strcpy(val.as.string, value);
 
     return val;
 }

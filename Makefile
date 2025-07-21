@@ -1,28 +1,61 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c99 -g3 -gdwarf-4 -fno-omit-frame-pointer
+CFLAGS = -Wall -Wextra -g -std=c99
 INCLUDE_DIR = include
 SRC_DIR = src
 BUILD_DIR = build
 OUTPUT_DIR = output
+
+# 核心源文件
+CORE_SOURCES = $(SRC_DIR)/main.c $(SRC_DIR)/lexer.c $(SRC_DIR)/parser.c \
+               $(SRC_DIR)/ast.c $(SRC_DIR)/environment.c $(SRC_DIR)/value.c \
+               $(SRC_DIR)/native_functions.c $(SRC_DIR)/file_utils.c \
+               $(SRC_DIR)/type_system.c
+
+# 解释器模块源文件
+INTERPRETER_SOURCES = $(SRC_DIR)/interpreter/interpreter_core.c \
+                      $(SRC_DIR)/interpreter/expression_evaluator.c \
+                      $(SRC_DIR)/interpreter/binary_operations.c \
+                      $(SRC_DIR)/interpreter/unary_operations.c \
+                      $(SRC_DIR)/interpreter/array_operations.c \
+                      $(SRC_DIR)/interpreter/function_calls.c \
+                      $(SRC_DIR)/interpreter/statement_executor.c \
+                      $(SRC_DIR)/interpreter/cast_operations.c
+
+
+ALL_SOURCES = $(CORE_SOURCES) $(INTERPRETER_SOURCES)
+
+# 目标文件
+OBJECTS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(ALL_SOURCES))
+
+# 最终目标
 TARGET = $(OUTPUT_DIR)/sparrow
-LDFLAGS = -lm  # 添加数学库链接
 
-SRCS = $(wildcard $(SRC_DIR)/*.c)
-OBJS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(SRCS))
+# 默认目标
+all: $(TARGET)
 
-.PHONY: all clean
+# 链接目标
+$(TARGET): $(OBJECTS) | $(OUTPUT_DIR)
+	$(CC) $(OBJECTS) -o $@ -lm
 
-all: directories $(TARGET)
-
-directories:
-	mkdir -p $(BUILD_DIR)
-	mkdir -p $(OUTPUT_DIR)
-
-$(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) -g -o $@ $^ $(LDFLAGS)  # 添加 LDFLAGS
-
-$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
+# 编译规则 - 处理嵌套目录
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
+	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) -c $< -o $@
 
+# 创建目录
+$(BUILD_DIR):
+	mkdir -p $(BUILD_DIR)
+	mkdir -p $(BUILD_DIR)/interpreter
+
+$(OUTPUT_DIR):
+	mkdir -p $(OUTPUT_DIR)
+
+# 清理
 clean:
 	rm -rf $(BUILD_DIR) $(OUTPUT_DIR)
+
+# 运行测试
+test: $(TARGET)
+	./$(TARGET) test.spw
+
+.PHONY: all clean test

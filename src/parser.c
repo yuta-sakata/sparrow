@@ -347,13 +347,32 @@ static Stmt *declaration(Parser *parser)
         }
         else
         {
-            // 多个常量，创建多常量声明
-            Stmt *stmt = createMultiConstStmt(names, count, typeAnnotation, initializer);
-            if (stmt != NULL && isStatic)
+            Stmt **constStmts = (Stmt **)malloc(sizeof(Stmt *) * count);
+            if (constStmts == NULL)
             {
-                stmt->as.multiConst.isStatic = true;
+                if (initializer)
+                    freeExpr(initializer);
+                free(names);
+                return NULL;
             }
-            return stmt;
+
+            for (int i = 0; i < count; i++)
+            {
+                Expr *initCopy = (initializer != NULL) ? copyExpr(initializer) : NULL;
+                constStmts[i] = createConstStmt(names[i], typeAnnotation, initCopy);
+                if (constStmts[i] != NULL && isStatic)
+                {
+                    constStmts[i]->as.constStmt.isStatic = true;
+                }
+            }
+
+            if (initializer)
+                freeExpr(initializer);
+            free(names);
+
+            // 返回包含所有常量声明的块语句
+            Stmt *blockStmt = createBlockStmt(constStmts, count);
+            return blockStmt;
         }
     }
 
