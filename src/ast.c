@@ -111,7 +111,7 @@ Stmt *createMultiVarStmt(Token *names, int count, TypeAnnotation type, Expr *ini
     return stmt;
 }
 
-Stmt *createMultiConstStmt(Token *names, int count, TypeAnnotation type, Expr *initializer)
+Stmt *createMultiConstStmt(Token *names, int count, TypeAnnotation type, Expr **initializers, int initializerCount)
 {
     Stmt *stmt = (Stmt *)malloc(sizeof(Stmt));
     if (stmt == NULL)
@@ -122,7 +122,8 @@ Stmt *createMultiConstStmt(Token *names, int count, TypeAnnotation type, Expr *i
     stmt->as.multiConst.names = names;
     stmt->as.multiConst.count = count;
     stmt->as.multiConst.type = type;
-    stmt->as.multiConst.initializer = initializer;
+    stmt->as.multiConst.initializers = initializers;
+    stmt->as.multiConst.initializerCount = initializerCount;
     stmt->as.multiConst.isStatic = false; // 默认非静态
     return stmt;
 }
@@ -619,6 +620,16 @@ Expr *copyExpr(Expr *expr)
         return createCastExpr(expr->as.cast.targetType, exprCopy);
     }
 
+    case EXPR_DOT_ACCESS:
+    {
+        Expr *objectCopy = copyExpr(expr->as.dotAccess.object);
+        if (objectCopy == NULL)
+        {
+            return NULL;
+        }
+        return createDotAccessExpr(objectCopy, expr->as.dotAccess.member);
+    }
+
     default:
         fprintf(stderr, "未知的表达式类型\n");
         return NULL;
@@ -731,6 +742,21 @@ Expr *createCastExpr(BaseType targetType, Expr *expression)
 }
 
 /**
+ * 创建点访问表达式
+ */
+Expr *createDotAccessExpr(Expr *object, Token member)
+{
+    Expr *expr = (Expr *)malloc(sizeof(Expr));
+    if (expr == NULL)
+        return NULL;
+
+    expr->type = EXPR_DOT_ACCESS;
+    expr->as.dotAccess.object = object;
+    expr->as.dotAccess.member = member;
+    return expr;
+}
+
+/**
  * 释放表达式节点及其所有子节点的内存
  *
  * 该函数递归地释放表达式树中的所有节点，包括：
@@ -810,6 +836,12 @@ void freeExpr(Expr *expr)
             freeExpr(expr->as.cast.expression);
         }
         break;
+    case EXPR_DOT_ACCESS:
+        if (expr->as.dotAccess.object != NULL)
+        {
+            freeExpr(expr->as.dotAccess.object);
+        }
+        break;
     case EXPR_LITERAL:
     case EXPR_VARIABLE:
         // 这些节点没有需要释放的指针
@@ -847,6 +879,24 @@ void freeStmt(Stmt *stmt)
         if (stmt->as.multiVar.names != NULL)
         {
             free(stmt->as.multiVar.names);
+        }
+        break;
+    case STMT_MULTI_CONST:
+        if (stmt->as.multiConst.initializers != NULL)
+        {
+            // 只释放实际存在的初始值表达式，避免重复释放
+            for (int i = 0; i < stmt->as.multiConst.initializerCount; i++)
+            {
+                if (stmt->as.multiConst.initializers[i] != NULL)
+                {
+                    freeExpr(stmt->as.multiConst.initializers[i]);
+                }
+            }
+            free(stmt->as.multiConst.initializers);
+        }
+        if (stmt->as.multiConst.names != NULL)
+        {
+            free(stmt->as.multiConst.names);
         }
         break;
     case STMT_BLOCK:

@@ -25,6 +25,7 @@ typedef enum
     EXPR_ARRAY_ACCESS,  // 数组访问
     EXPR_ARRAY_ASSIGN,  // 数组赋值
     EXPR_CAST,          // 类型转换表达式
+    EXPR_DOT_ACCESS,    // 点访问表达式（如 obj.member）
 } ExprType;
 
 // 语句类型
@@ -87,7 +88,8 @@ typedef struct
     Token *names;        // 常量名数组
     int count;           // 常量数量
     TypeAnnotation type; // 共享的类型
-    Expr *initializer;   // 共享的初始值（常量必须有初始值）
+    Expr **initializers; // 初始值数组（每个常量一个初始值）
+    int initializerCount; // 初始值数量
     bool isStatic;       // 是否为静态常量
 } MultiConstStmt;
 
@@ -183,6 +185,13 @@ typedef struct
     Expr *expression;    // 被转换的表达式
 } CastExpr;
 
+// 点访问表达式
+typedef struct
+{
+    Expr *object;   // 被访问的对象（如枚举名）
+    Token member;   // 成员名称
+} DotAccessExpr;
+
 // 表达式结构
 typedef struct Expr
 {
@@ -202,6 +211,7 @@ typedef struct Expr
         ArrayAccessExpr arrayAccess;   // 数组访问表达式
         ArrayAssignExpr arrayAssign;   // 数组赋值表达式
         CastExpr cast;                 // 类型转换表达式
+        DotAccessExpr dotAccess;       // 点访问表达式
     } as;
 } Expr;
 
@@ -337,13 +347,14 @@ Expr *createArrayLiteralExpr(Expr **elements, int count);
 Expr *createArrayAccessExpr(Expr *array, Expr *index);
 Expr *createArrayAssignExpr(Expr *array, Expr *index, Expr *value);
 Expr *createCastExpr(BaseType targetType, Expr *expression);
+Expr *createDotAccessExpr(Expr *object, Token member);
 
 // 创建语句节点的函数
 Stmt *createExpressionStmt(Expr *expression);
 Stmt *createVarStmt(Token name, TypeAnnotation type, Expr *initializer);
 Stmt *createConstStmt(Token name, TypeAnnotation type, Expr *initializer);
 Stmt *createMultiVarStmt(Token *names, int count, TypeAnnotation type, Expr *initializer);
-Stmt *createMultiConstStmt(Token *names, int count, TypeAnnotation type, Expr *initializer);
+Stmt *createMultiConstStmt(Token *names, int count, TypeAnnotation type, Expr **initializers, int initializerCount);
 Stmt *createBlockStmt(Stmt **statements, int count);
 Stmt *createIfStmt(Expr *condition, Stmt *thenBranch, Stmt *elseBranch);
 Stmt *createWhileStmt(Expr *condition, Stmt *body);
