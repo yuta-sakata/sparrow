@@ -11,5 +11,6 @@ Value evaluateLiteral(Expr *expr);
 Value evaluateGrouping(Interpreter *interpreter, Expr *expr);
 Value evaluateVariable(Interpreter *interpreter, Expr *expr);
 Value evaluateAssign(Interpreter *interpreter, Expr *expr);
+Value evaluateDotAccess(Interpreter *interpreter, Expr *expr);
 
 #endif // SPARROW_EXPRESSION_EVALUATOR_H

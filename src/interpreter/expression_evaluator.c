@@ -37,6 +37,8 @@ Value evaluate(Interpreter *interpreter, Expr *expr) {
         return evaluateArrayAssign(interpreter, expr);
     case EXPR_CAST:
         return evaluateCast(interpreter, expr);
+    case EXPR_DOT_ACCESS:
+        return evaluateDotAccess(interpreter, expr);
     }
 
     return createNull();
@@ -138,4 +140,40 @@ Value evaluateAssign(Interpreter *interpreter, Expr *expr) {
     }
 
     return value;
+}
+
+Value evaluateDotAccess(Interpreter *interpreter, Expr *expr) {
+    // 对于枚举成员访问，我们需要将 EnumName.MemberName 转换为 EnumName_MemberName
+    Expr *object = expr->as.dotAccess.object;
+    Token member = expr->as.dotAccess.member;
+    
+    // 假设对象是一个变量引用（枚举名）
+    if (object->type != EXPR_VARIABLE) {
+        runtimeError(interpreter, "Can only access members of enums");
+        return createNull();
+    }
+    
+    // 构造完整的枚举成员名称：EnumName_MemberName
+    const char *enumName = object->as.variable.name.lexeme;
+    const char *memberName = member.lexeme;
+    
+    // 分配内存来存储完整名称
+    size_t fullNameLen = strlen(enumName) + strlen(memberName) + 2; // +2 for '_' and '\0'
+    char *fullName = malloc(fullNameLen);
+    if (fullName == NULL) {
+        runtimeError(interpreter, "Memory allocation failed");
+        return createNull();
+    }
+    
+    snprintf(fullName, fullNameLen, "%s_%s", enumName, memberName);
+    
+    // 查找枚举成员值
+    Token enumMemberToken;
+    enumMemberToken.lexeme = fullName;
+    enumMemberToken.type = TOKEN_IDENTIFIER;
+    
+    Value result = getVariable(interpreter->globals, enumMemberToken);
+    
+    free(fullName);
+    return result;
 }

@@ -153,26 +153,38 @@ static void executeMultiVar(Interpreter *interpreter, Stmt *stmt) {
 }
 
 static void executeMultiConst(Interpreter *interpreter, Stmt *stmt) {
-    if (stmt->as.multiConst.initializer == NULL) {
+    if (stmt->as.multiConst.initializers == NULL || stmt->as.multiConst.initializerCount == 0) {
         runtimeError(interpreter, "Constants must be initialized.");
         return;
     }
 
-    Value initialValue = evaluate(interpreter, stmt->as.multiConst.initializer);
-    if (interpreter->hadError) {
-        freeValue(initialValue);
-        return;
-    }
-
     for (int i = 0; i < stmt->as.multiConst.count; i++) {
-        if (stmt->as.multiConst.isStatic) {
-            defineStaticVariable(interpreter->staticStorage, stmt->as.multiConst.names[i].lexeme, initialValue, true);
+        Value value;
+        
+        if (stmt->as.multiConst.initializerCount == 1) {
+            // 所有常量共享一个初始值
+            value = evaluate(interpreter, stmt->as.multiConst.initializers[0]);
+        } else if (i < stmt->as.multiConst.initializerCount) {
+            // 每个常量有自己的初始值
+            value = evaluate(interpreter, stmt->as.multiConst.initializers[i]);
         } else {
-            defineConstant(interpreter->environment, stmt->as.multiConst.names[i].lexeme, initialValue);
+            runtimeError(interpreter, "Not enough initializers for constants.");
+            return;
         }
-    }
 
-    freeValue(initialValue);
+        if (interpreter->hadError) {
+            freeValue(value);
+            return;
+        }
+
+        if (stmt->as.multiConst.isStatic) {
+            defineStaticVariable(interpreter->staticStorage, stmt->as.multiConst.names[i].lexeme, value, true);
+        } else {
+            defineConstant(interpreter->environment, stmt->as.multiConst.names[i].lexeme, value);
+        }
+
+        freeValue(value);
+    }
 }
 
 static void executeBlock(Interpreter *interpreter, Stmt **statements, int count, Environment *environment) {
